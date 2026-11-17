@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "project": "RIFT.RE-Spellcasting",
+  "sourceRepository": "../rre",
+  "recordedDate": "2026-11-16",
+  "scope": "Offline references only; no independently reproduced runtime result",
+  "entries": [
+    {
+      "id": "SP-E001",
+      "sourcePath": "docs/REA-RIFT-SPELLCASTING-SC418-FIRST-CAPTURE-2026-11-01.md",
+      "sha256": "bee1aaf8732af7d367632ff42ec1593468d662f8fdc33ee938a9c6fe3e08be1a",
+      "claim": "One operator-attested Atank L45 Warrior role-slot-1 SavedVariables capture contained 69 unique API-listed abilities and 69 details.",
+      "proof": "RRE report summarizing saved-file and integrity checks",
+      "limitations": "Not all future/locked/learnable skills; executable hash not process-bound at capture; UI reconciliation open."
+    },
+    {
+      "id": "SP-E002",
+      "sourcePath": "docs/REA-RIFT-SPELLCASTING-SC103-EXACT-ID-CROSSWALK-2026-11-02.md",
+      "sha256": "ab8101c51f2bfec6fdcf73fcd509acae570b3c1b813cb95cc867f0c5e2bb13c1",
+      "claim": "Offline exact-ID crosswalk: 96 static Warrior candidate IDs; 39 present and 57 absent from the saved known-69; 30 known IDs outside the three static soul files.",
+      "proof": "Source-hashed offline join reported by RRE",
+      "limitations": "Absent from current-known list does not prove locked, learnable, impossible to cast or unknown to every character."
+    },
+    {
+      "id": "SP-E003",
+      "sourcePath": "docs/REA-RIFT-SPELLCASTING-SC605-CUSTOM-ADDON-PLAYBOOK-2026-11-01.md",
+      "sha256": "d68605bbd9a791af03f6d3dc435bb95b8cab1bfe025193927a482c4c81d890e2",
+      "claim": "A bounded manual RRECollector List/Detail capture removed a missing-current-known-catalog blocker.",
+      "proof": "RRE research-method retrospective tied to SC-418 and source commits",
+      "limitations": "Does not establish wall-clock speedup, native casting implementation, or server acknowledgement."
+    }
+  ],
+  "nextResearchQuestions": [
+    "What evidence distinguishes known from learnable/locked for the same role and epoch?",
+    "Which observed queue-mode fields can be tied to actual cast attempt/acknowledgment timing without conflating them?",
+    "Which source-qualified native functions map one concrete cast event to a client-side request path?"
+  ]
+}
