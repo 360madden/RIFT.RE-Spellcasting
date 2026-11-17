@@ -6,18 +6,15 @@
 
 The common object initializer RVA `0x129C3DC` installs a vtable pointer via the `lea rax,[rip+0x14D9C95]` instruction at RVA `0x129C3F4`, followed by `mov [rcx],rax` at `0x129C3FF`. Its computed vtable RVA is **`0x2776090`**.
 
-On installed `rift_x64.exe` SHA-256 `1935a05c9db6d468e34e0055014a4a99c1b5afceb1695884e24600f5c20a4be8`, PE image base `0x140000000`, the first six eight-byte table entries decode as:
+On installed `rift_x64.exe` SHA-256 `1935a05c9db6d468e34e0055014a4a99c1b5afceb1695884e24600f5c20a4be8`, PE image base `0x140000000`, the sequential six pointer values are **not one six-entry vtable**. SP-006W subsequently verified that both initializer variants overwrite the base vtable pointer with adjacent two-entry table starts:
 
-| Slot | Pointer RVA | Bounded interpretation |
-| --- | --- | --- |
-| 0 | `0x129C5D4` | destructor-like routine, calls `0x129C578` and conditionally deallocates |
-| 1 | `0x25047BB` | pointer value confirmed; executable function/meaning **not qualified** |
-| 2 | `0x129C5D4` | same destructor-like routine |
-| 3 | `0x129C6A0` | short tail-jump thunk, target not yet resolved |
-| 4 | `0x129C5D4` | same destructor-like routine |
-| 5 | `0x129C6AC` | calls `0x129C6C4` then writes returned qword to `[rdx]` |
+| Selected initializer | Vtable start RVA | Entry 0 | Entry 1 |
+| --- | --- | --- | --- |
+| Base `0x129C3DC` | `0x2776090` | `0x129C5D4` | `0x25047BB` (unresolved) |
+| Variant A `0x129C47C` | `0x27760A0` | `0x129C5D4` | `0x129C6A0` (tail thunk) |
+| Variant B `0x129C518` | `0x27760B0` | `0x129C5D4` | `0x129C6AC` (output method) |
 
-No claim is made that entries after slot 5 belong to the vtable: adjacent bytes are not an established table boundary.
+The three table starts are directly supported by `lea` and object-vtable stores in the initializer bodies. The two-entry boundary remains a working structural interpretation, not compiler RTTI proof; see `docs/SP-006W-clock-vtable-variants.md`.
 
 ## Discarded path
 
