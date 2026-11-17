@@ -45,11 +45,25 @@ export function verifyClockStringTable(bytes, expectedSha = EXPECTED_SHA) {
   requireEvidence(bytes.readBigUInt64LE(at(0x2f644d0, 8)) === imageBase + 0x26a5c8cn, 'frame-table-neighbor-mismatch');
   requireEvidence(bytes.readBigUInt64LE(at(0x2f644e8, 8)) === imageBase + 0x26a5c8cn, 'real-table-neighbor-mismatch');
   requireEvidence(bytes.toString('ascii', at(0x26a5c8c, 5), at(0x26a5c8c, 5) + 5) === 'time\0', 'shared-time-literal-mismatch');
+  // Validate instruction-shaped RIP-relative references; these are static registration leads,
+  // not proof of a native clock accessor or call result.
+  const references = [
+    { name: 'Frame', instructionRva: 0x9b6cc6, opcode: '4c8b05', targetRva: 0x2f644c8 },
+    { name: 'Frame-neighbor', instructionRva: 0x9b6cfb, opcode: '488d05', targetRva: 0x2f644d0 },
+    { name: 'Real', instructionRva: 0x9b6d5c, opcode: '4c8b05', targetRva: 0x2f644e0 },
+    { name: 'Server', instructionRva: 0x9b6e06, opcode: '4c8b05', targetRva: 0x2f644f8 },
+  ];
+  for (const ref of references) {
+    const location = at(ref.instructionRva, 7);
+    requireEvidence(bytes.toString('hex', location, location + 3) === ref.opcode, 'registration-opcode-mismatch-' + ref.name);
+    requireEvidence(ref.instructionRva + 7 + bytes.readInt32LE(location + 3) === ref.targetRva, 'registration-displacement-mismatch-' + ref.name);
+  }
   return {
     schemaVersion: 1, evidenceKind: 'exact-build-clock-name-pointer-table/1',
     executableSha256: expectedSha.toLowerCase(), imageBase: '0x' + imageBase.toString(16),
     entries: fields.map(f => ({name:f.name, stringRva:'0x'+f.stringRva.toString(16), pointerRva:'0x'+f.pointerRva.toString(16)})),
     sharedNeighborStringRva: '0x26a5c8c',
+    staticRegistrationReferences: references.map(r => ({ name: r.name, instructionRva: '0x' + r.instructionRva.toString(16), targetRva: '0x' + r.targetRva.toString(16) })), 
     nativeClockAccessorQualified: false, frameClockValueAddressQualified: false, utcClockPairQualified: false,
     limitation: 'Static name and pointer-table facts only. No function pointer, native getter, source semantics, live event or server request proven.'
   };

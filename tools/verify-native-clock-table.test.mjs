@@ -11,9 +11,21 @@ const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 test('exact-build clock-name table verifies without native accessor qualification', () => {
   const result = verifyClockStringTable(original);
   assert.equal(result.entries.length, 3);
+  assert.equal(result.staticRegistrationReferences.length, 4);
+  assert.equal(result.staticRegistrationReferences[0].instructionRva, '0x9b6cc6');
   assert.equal(result.entries[0].stringRva, '0x26d85a8');
   assert.equal(result.nativeClockAccessorQualified, false);
   assert.equal(result.utcClockPairQualified, false);
+});
+test('changed Frame registration opcode fails under synthetic rehash', () => {
+  const changed = Buffer.from(original);
+  changed[0x9b60c6] ^= 1;
+  assert.throws(() => verifyClockStringTable(changed, digest(changed)), /registration-opcode-mismatch-Frame/);
+});
+test('changed Server registration displacement fails under synthetic rehash', () => {
+  const changed = Buffer.from(original);
+  changed[0x9b6209] ^= 1;
+  assert.throws(() => verifyClockStringTable(changed, digest(changed)), /registration-displacement-mismatch-Server/);
 });
 test('changed source bytes fail original PE hash gate', () => {
   const changed = Buffer.from(original);
