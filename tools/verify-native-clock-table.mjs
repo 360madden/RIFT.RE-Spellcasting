@@ -162,8 +162,25 @@ export function verifyClockStringTable(bytes, expectedSha = EXPECTED_SHA) {
     {name:'update-double-to-float',rva:0x129c8ad,hex:'660f5ac0'},
   ];
   for(const sig of frameScaleSignatures){const loc=at(sig.rva,sig.hex.length/2);requireEvidence(bytes.toString('hex',loc,loc+sig.hex.length/2)===sig.hex,'clock-scale-signature-mismatch-'+sig.name);}
+  // SP-007A: object-specific virtual method refreshes counter +0x40;
+  // ordinary path subtracts the previous +0x48 value and accumulates raw ticks.
+  // A nonzero +0x50 overrides the computed delta, so cadence/elapsed meaning stays gated.
+  const counterPathSignatures=[
+    {name:'counter-address',rva:0x129c783,hex:'488d7940'},
+    {name:'previous-counter-store',rva:0x129c790,hex:'48894148'},
+    {name:'vtable-method-dispatch',rva:0x129c797,hex:'ff5008'},
+    {name:'refreshed-counter-load',rva:0x129c7a3,hex:'488b0f'},
+    {name:'counter-delta-subtract',rva:0x129c7a6,hex:'482b4b48'},
+    {name:'raw-delta-store',rva:0x129c7aa,hex:'48894b68'},
+    {name:'raw-delta-accumulate',rva:0x129c7b1,hex:'48014b60'},
+    {name:'adjusted-counter-accumulate',rva:0x129c825,hex:'48014b70'},
+    {name:'variant-A-method',rva:0x129c6a0,hex:'488bca48ff25462c35'},
+    {name:'variant-B-read-clock-call',rva:0x129c6b5,hex:'e80a000000'},
+    {name:'variant-B-write-counter',rva:0x129c6ba,hex:'488903'},
+  ];
+  for(const sig of counterPathSignatures){const loc=at(sig.rva,sig.hex.length/2);requireEvidence(bytes.toString('hex',loc,loc+sig.hex.length/2)===sig.hex,'clock-counter-signature-mismatch-'+sig.name);}
   return {
-    schemaVersion: 8, evidenceKind: 'exact-build-frame-field-scale-chain/1',
+    schemaVersion: 9, evidenceKind: 'exact-build-frame-counter-update-chain/1',
     executableSha256: expectedSha.toLowerCase(), imageBase: '0x' + imageBase.toString(16),
     entries: fields.map(f => ({name:f.name, stringRva:'0x'+f.stringRva.toString(16), pointerRva:'0x'+f.pointerRva.toString(16)})),
     sharedNeighborStringRva: '0x26a5c8c',
@@ -185,6 +202,9 @@ export function verifyClockStringTable(bytes, expectedSha = EXPECTED_SHA) {
     variantBCounterFrequency:1000, variantBReciprocalScale:0.001,
     frameScaleSignatures:frameScaleSignatures.map(s=>({name:s.name,instructionRva:'0x'+s.rva.toString(16)})),
     variantBSecondsScaleStaticQualified:true, activeRuntimeVariantQualified:false,
+    counterPathSignatures:counterPathSignatures.map(s=>({name:s.name,instructionRva:'0x'+s.rva.toString(16)})),
+    counterVirtualMethodOffset:8, counterFieldOffset:64, counterDeltaOverrideFieldOffset:80,
+    counterUpdatePathStaticQualified:true, counterSourceApiQualified:false, updateCadenceQualified:false,
     nativeClockAccessorQualified: false, frameClockValueAddressQualified: false, utcClockPairQualified: false,
     limitation: 'Variant B encodes counter frequency 1000.0 and reciprocal scale 0.001; update routine multiplies by scale before writing Frame +0x18. Whether variant B is active and whether the exposed Frame value is elapsed seconds in live gameplay remain unverified.'
   };

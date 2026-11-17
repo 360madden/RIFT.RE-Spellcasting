@@ -40,7 +40,7 @@ const rvaOffset = (bytes, rva) => {
 
 test('three initializer-selected vtables are independently verified', () => {
   const result=verifyClockStringTable(original);
-  assert.equal(result.schemaVersion,8);
+  assert.equal(result.schemaVersion,9);
   assert.deepEqual(result.clockObjectVtables.map(x=>x.tableRva),['0x2776090','0x27760a0','0x27760b0']);
   assert.equal(result.clockObjectVtables[2].entryRvas[1],'0x129c6ac');
 });
@@ -57,7 +57,7 @@ test('changed variant B vtable method pointer fails under synthetic rehash', () 
 
 test('three exact shared-global update callers reach the native Frame writer', () => {
   const result=verifyClockStringTable(original);
-  assert.equal(result.schemaVersion,8);
+  assert.equal(result.schemaVersion,9);
   assert.equal(result.nativeFrameFieldWriterRva,'0x129c8b1');
   assert.equal(result.nativeFrameUpdateRoutineRva,'0x129c774');
   assert.equal(result.nativeFrameUpdateCallsites.length,3);
@@ -81,6 +81,26 @@ test('changed updater scale multiplication fails synthetic rehash', () => {
   const changed=Buffer.from(original);
   changed[rvaOffset(changed,0x129c893)]^=1;
   assert.throws(()=>verifyClockStringTable(changed,digest(changed)),/clock-scale-signature-mismatch-update-scale-multiply/);
+});
+test('Frame update dispatches per-variant counter method and accumulates raw deltas', () => {
+  const result=verifyClockStringTable(original);
+  assert.equal(result.counterPathSignatures.length,11);
+  assert.equal(result.counterVirtualMethodOffset,8);
+  assert.equal(result.counterFieldOffset,0x40);
+  assert.equal(result.counterDeltaOverrideFieldOffset,0x50);
+  assert.equal(result.counterUpdatePathStaticQualified,true);
+  assert.equal(result.counterSourceApiQualified,false);
+  assert.equal(result.updateCadenceQualified,false);
+});
+test('mutated counter virtual dispatch fails synthetic rehash', () => {
+  const changed=Buffer.from(original);
+  changed[rvaOffset(changed,0x129c797)]^=1;
+  assert.throws(()=>verifyClockStringTable(changed,digest(changed)),/clock-counter-signature-mismatch-vtable-method-dispatch/);
+});
+test('mutated raw delta accumulation fails synthetic rehash', () => {
+  const changed=Buffer.from(original);
+  changed[rvaOffset(changed,0x129c7b1)]^=1;
+  assert.throws(()=>verifyClockStringTable(changed,digest(changed)),/clock-counter-signature-mismatch-raw-delta-accumulate/);
 });
 test('changed Frame-field float store fails synthetic rehash', () => {
   const changed=Buffer.from(original);
