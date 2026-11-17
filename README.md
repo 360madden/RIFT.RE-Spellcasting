@@ -20,10 +20,18 @@ On AMD-DESKTOP, open PowerShell in `C:\work\RIFT.RE-Spellcasting` and run:
 
 ```powershell
 node tools/verify-evidence.mjs
-node --test tools/classify-cast-evidence.test.mjs tools/historical-fixtures.test.mjs
+node --test tools/classify-cast-evidence.test.mjs tools/historical-fixtures.test.mjs tools/verify-native-cast-entry.test.mjs
 ```
 
 The source-pinned evidence index is in `docs/evidence-index.json`; the project priorities are in `ROADMAP.md`. The classifier treats actual server acknowledgement and queue behavior as **unknown** unless separately supported. Its tests include synthetic events and two source-hashed **historical report summaries**, not live gameplay or raw event replay. See `docs/SP-004-historical-fixtures.md` for limitations.
+
+For the optional exact-build native command-table check (requires the original installed RIFT executable):
+
+```powershell
+node tools/verify-native-cast-entry.mjs 'C:\Program Files (x86)\Glyph\Games\RIFT\Live\rift_x64.exe'
+```
+
+This is a read-only PE inspection, **not** cast execution. See `docs/SP-005B-native-cast-entry.md`.
 
 ## Planned structure
 
