@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "historical-report-summary-not-raw-capture",
+  "source": {
+    "repository": "riftreader2",
+    "path": "docs/validation/casting-ranged-2026-10-26.md",
+    "sha256": "87336f71d597dccab933818b577d3e4455d765afff801c1c7008e709c0fc878e",
+    "qualification": "Historical report says matching Event.Combat.abilityNew, exact player and target; original raw capture not reproduced by this fixture."
+  },
+  "identity": {
+    "casterId": "u035400012FA2D207",
+    "abilityId": "A6B8B16CD6F8B3DB9",
+    "targetId": "u80000001EB003765"
+  },
+  "events": [
+    {
+      "kind": "effect",
+      "id": "historical-report-second-attempt-target-damage",
+      "time": 19791.587890625,
+      "clockDomain": "rift-game-frame-reported",
+      "sourceId": "RR2-casting-ranged-2026-10-26",
+      "casterId": "u035400012FA2D207",
+      "abilityId": "A6B8B16CD6F8B3DB9",
+      "targetId": "u80000001EB003765",
+      "reportedDamage": 402
+    }
+  ],
+  "limitations": [
+    "Only one reported exact-target damage event is modeled, not entire attempt, queue or castbar.",
+    "The report has separate first-attempt dodge but no exact frame timestamp for it here; not fabricated.",
+    "Session was historical VMware; no current live target qualification."
+  ]
+}

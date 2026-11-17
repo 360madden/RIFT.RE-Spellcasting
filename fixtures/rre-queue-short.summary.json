@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "historical-report-summary-not-raw-capture",
+  "source": {
+    "repository": "rre",
+    "path": "docs/REA-RIFT-SPELLCASTING-SC613-LAB2-QUEUE-2026-11-07.json",
+    "sha256": "bd4e8ec6783f5a0c8845c5a68390ac3580be4c46ea800c8c6cc26f101922b468",
+    "qualification": "Two UI screenshot file metadata times and their recorded Short labels; matching native numeric value 1 is documented separately."
+  },
+  "identity": null,
+  "events": [
+    {
+      "kind": "queue_setting",
+      "id": "reported-pre-ui",
+      "time": 1794066681284,
+      "clockDomain": "artifact-file-mtime-utc-ms-not-game-time",
+      "sourceId": "RRE-SC613-source-summary",
+      "mode": "Short"
+    },
+    {
+      "kind": "queue_setting",
+      "id": "reported-post-ui",
+      "time": 1794066735969,
+      "clockDomain": "artifact-file-mtime-utc-ms-not-game-time",
+      "sourceId": "RRE-SC613-source-summary",
+      "mode": "Short"
+    }
+  ],
+  "limitations": [
+    "These are original screenshot FILE mtime values, not screenshots' exact display-time or cast timestamps.",
+    "No queue attempt or queue acceptance was observed by this fixture.",
+    "Numeric 0/2 are unmapped; 1 ↔ Short is scoped to the historical session.",
+    "Historical VMware observations reused offline only."
+  ]
+}

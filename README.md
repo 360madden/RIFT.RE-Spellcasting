@@ -20,10 +20,10 @@ On AMD-DESKTOP, open PowerShell in `C:\work\RIFT.RE-Spellcasting` and run:
 
 ```powershell
 node tools/verify-evidence.mjs
-node --test tools/classify-cast-evidence.test.mjs
+node --test tools/classify-cast-evidence.test.mjs tools/historical-fixtures.test.mjs
 ```
 
-The source-pinned evidence index is in `docs/evidence-index.json`; the project priorities are in `ROADMAP.md`. The classifier treats actual server acknowledgement and queue behavior as **unknown** unless separately supported. Its current tests use synthetic events, not live gameplay.
+The source-pinned evidence index is in `docs/evidence-index.json`; the project priorities are in `ROADMAP.md`. The classifier treats actual server acknowledgement and queue behavior as **unknown** unless separately supported. Its tests include synthetic events and two source-hashed **historical report summaries**, not live gameplay or raw event replay. See `docs/SP-004-historical-fixtures.md` for limitations.
 
 ## Planned structure
 

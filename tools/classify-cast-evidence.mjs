@@ -6,8 +6,11 @@ import { pathToFileURL } from 'node:url';
 const kinds = new Set(['input_attempt', 'castbar_start', 'castbar_end', 'effect', 'interrupt', 'queue_setting']);
 export function classifyCastEvidence(events, identity) {
   if (!Array.isArray(events)) throw new TypeError('events must be an array');
-  if (!identity || typeof identity.casterId !== 'string' || typeof identity.abilityId !== 'string' ||
-      !identity.casterId || !identity.abilityId) throw new TypeError('exact casterId and abilityId required');
+  const validIdentity = identity && typeof identity.casterId === 'string' && identity.casterId &&
+    typeof identity.abilityId === 'string' && identity.abilityId;
+  if ((!validIdentity && (identity != null || events.some(e => e?.kind !== 'queue_setting')))) {
+    throw new TypeError('exact casterId and abilityId required for cast events');
+  }
   const lastTime = new Map();
   const seen = new Set();
   const observed = new Set();
@@ -39,7 +42,7 @@ export function classifyCastEvidence(events, identity) {
       clockDomain: event.clockDomain, time: event.time });
   }
   return {
-    identity: { ...identity },
+    identity: validIdentity ? { ...identity } : null,
     observed: {
       attempt: observed.has('input_attempt'),
       castbarStart: observed.has('castbar_start'),
