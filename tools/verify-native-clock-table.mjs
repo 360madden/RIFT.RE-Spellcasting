@@ -151,8 +151,19 @@ export function verifyClockStringTable(bytes, expectedSha = EXPECTED_SHA) {
   const receiver=at(0x129c787,3), writer=at(0x129c8b1,5);
   requireEvidence(bytes.toString('hex',receiver,receiver+3)==='488bd9','frame-update-receiver-copy-mismatch');
   requireEvidence(bytes.toString('hex',writer,writer+5)==='f30f114318','frame-update-float-store-mismatch');
+  // SP-006Z: variant B uses an exact 1000.0 counter frequency and reciprocal 0.001.
+  // The updater applies the +0x28 double scale before writing the +0x18 float.
+  const frameScaleSignatures = [
+    {name:'variant-B-frequency-immediate',rva:0x129c538,hex:'48b80000000000408f40'},
+    {name:'variant-B-reciprocal-immediate',rva:0x129c546,hex:'48b8fca9f1d24d62503f'},
+    {name:'variant-B-reciprocal-store',rva:0x129c550,hex:'48894328'},
+    {name:'update-load-scale',rva:0x129c7b9,hex:'f20f105328'},
+    {name:'update-scale-multiply',rva:0x129c893,hex:'f20f59c2'},
+    {name:'update-double-to-float',rva:0x129c8ad,hex:'660f5ac0'},
+  ];
+  for(const sig of frameScaleSignatures){const loc=at(sig.rva,sig.hex.length/2);requireEvidence(bytes.toString('hex',loc,loc+sig.hex.length/2)===sig.hex,'clock-scale-signature-mismatch-'+sig.name);}
   return {
-    schemaVersion: 7, evidenceKind: 'exact-build-frame-field-writer-callchain/1',
+    schemaVersion: 8, evidenceKind: 'exact-build-frame-field-scale-chain/1',
     executableSha256: expectedSha.toLowerCase(), imageBase: '0x' + imageBase.toString(16),
     entries: fields.map(f => ({name:f.name, stringRva:'0x'+f.stringRva.toString(16), pointerRva:'0x'+f.pointerRva.toString(16)})),
     sharedNeighborStringRva: '0x26a5c8c',
@@ -170,9 +181,12 @@ export function verifyClockStringTable(bytes, expectedSha = EXPECTED_SHA) {
     clockObjectVtables:objectVtables.map(v=>({name:v.name,tableRva:'0x'+v.tableRva.toString(16),entryRvas:v.entryRvas.map(r=>'0x'+r.toString(16))})),
     nativeFrameFieldWriterRva:'0x129c8b1', nativeFrameUpdateRoutineRva:'0x129c774',
     nativeFrameUpdateCallsites:frameUpdateCallsites.map(s=>({loadRva:'0x'+s.loadRva.toString(16),callRva:'0x'+s.callRva.toString(16)})),
-    nativeFrameFieldWriterStaticQualified:true, 
+    nativeFrameFieldWriterStaticQualified:true,
+    variantBCounterFrequency:1000, variantBReciprocalScale:0.001,
+    frameScaleSignatures:frameScaleSignatures.map(s=>({name:s.name,instructionRva:'0x'+s.rva.toString(16)})),
+    variantBSecondsScaleStaticQualified:true, activeRuntimeVariantQualified:false,
     nativeClockAccessorQualified: false, frameClockValueAddressQualified: false, utcClockPairQualified: false,
-    limitation: 'Native function 0x129C774 writes float object +0x18 with three exact direct global-pointer callers. Runtime cadence, units, exact live instance, clock pairing and live readout remain unverified.'
+    limitation: 'Variant B encodes counter frequency 1000.0 and reciprocal scale 0.001; update routine multiplies by scale before writing Frame +0x18. Whether variant B is active and whether the exposed Frame value is elapsed seconds in live gameplay remain unverified.'
   };
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

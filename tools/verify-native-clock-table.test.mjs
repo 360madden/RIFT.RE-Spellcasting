@@ -40,7 +40,7 @@ const rvaOffset = (bytes, rva) => {
 
 test('three initializer-selected vtables are independently verified', () => {
   const result=verifyClockStringTable(original);
-  assert.equal(result.schemaVersion,7);
+  assert.equal(result.schemaVersion,8);
   assert.deepEqual(result.clockObjectVtables.map(x=>x.tableRva),['0x2776090','0x27760a0','0x27760b0']);
   assert.equal(result.clockObjectVtables[2].entryRvas[1],'0x129c6ac');
 });
@@ -57,12 +57,30 @@ test('changed variant B vtable method pointer fails under synthetic rehash', () 
 
 test('three exact shared-global update callers reach the native Frame writer', () => {
   const result=verifyClockStringTable(original);
-  assert.equal(result.schemaVersion,7);
+  assert.equal(result.schemaVersion,8);
   assert.equal(result.nativeFrameFieldWriterRva,'0x129c8b1');
   assert.equal(result.nativeFrameUpdateRoutineRva,'0x129c774');
   assert.equal(result.nativeFrameUpdateCallsites.length,3);
   assert.equal(result.nativeFrameFieldWriterStaticQualified,true);
   assert.equal(result.frameClockValueAddressQualified,false);
+});
+test('variant B counter scaling has exact static evidence but no active runtime proof', () => {
+  const result=verifyClockStringTable(original);
+  assert.equal(result.variantBCounterFrequency,1000);
+  assert.equal(result.variantBReciprocalScale,0.001);
+  assert.equal(result.frameScaleSignatures.length,6);
+  assert.equal(result.variantBSecondsScaleStaticQualified,true);
+  assert.equal(result.activeRuntimeVariantQualified,false);
+});
+test('changed variant B scale immediate fails synthetic rehash', () => {
+  const changed=Buffer.from(original);
+  changed[rvaOffset(changed,0x129c548)]^=1;
+  assert.throws(()=>verifyClockStringTable(changed,digest(changed)),/clock-scale-signature-mismatch-variant-B-reciprocal-immediate/);
+});
+test('changed updater scale multiplication fails synthetic rehash', () => {
+  const changed=Buffer.from(original);
+  changed[rvaOffset(changed,0x129c893)]^=1;
+  assert.throws(()=>verifyClockStringTable(changed,digest(changed)),/clock-scale-signature-mismatch-update-scale-multiply/);
 });
 test('changed Frame-field float store fails synthetic rehash', () => {
   const changed=Buffer.from(original);
