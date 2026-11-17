@@ -20,10 +20,23 @@ test('exact-build clock-name table verifies without native accessor qualificatio
   assert.equal(result.sharedOutputSignatures.length, 4);
   assert.equal(result.staticSlotWriterRva, '0x78e8fc');
   assert.equal(result.staticInitializerCalls.length, 3);
+  assert.equal(result.commonObjectBaseInitializerRva, '0x129c3dc');
+  assert.equal(result.commonObjectBaseCallsites.length, 2);
+  assert.equal(result.objectFieldSignatures.length, 5);
   assert.equal(result.staticRegistrationReferences[0].instructionRva, '0x9b6cc6');
   assert.equal(result.entries[0].stringRva, '0x26d85a8');
   assert.equal(result.nativeClockAccessorQualified, false);
   assert.equal(result.utcClockPairQualified, false);
+});
+test('changed base Frame-field zeroing fails under synthetic rehash', () => {
+  const changed=Buffer.from(original);
+  changed[0x129b80f]^=1;
+  assert.throws(()=>verifyClockStringTable(changed,digest(changed)),/clock-object-field-signature-mismatch-base-zero-frame-field/);
+});
+test('changed variant B base initializer target fails under synthetic rehash', () => {
+  const changed=Buffer.from(original);
+  changed[0x129b922]^=1;
+  assert.throws(()=>verifyClockStringTable(changed,digest(changed)),/clock-base-call-target-mismatch-129c521/);
 });
 test('changed direct slot-writer opcode fails under synthetic rehash', () => {
   const changed=Buffer.from(original);

@@ -109,8 +109,19 @@ export function verifyClockStringTable(bytes, expectedSha = EXPECTED_SHA) {
   for(const call of initializerCalls){const loc=at(call.instructionRva,5);requireEvidence(bytes[loc]===0xe8,'clock-init-call-opcode-mismatch-'+call.name);requireEvidence(call.instructionRva+5+bytes.readInt32LE(loc+1)===call.targetRva,'clock-init-call-target-mismatch-'+call.name);}
   const fallback=at(0x78e8f9,3);
   requireEvidence(bytes.toString('hex',fallback,fallback+3)==='498bc6','clock-init-fallback-mismatch');
+  // SP-006S: both variants call the base initializer; it zeroes the Frame +0x18 field.
+  const commonBaseCalls=[0x129c489,0x129c521];
+  for(const rva of commonBaseCalls){const loc=at(rva,5);requireEvidence(bytes[loc]===0xe8,'clock-base-call-opcode-mismatch-'+rva.toString(16));requireEvidence(rva+5+bytes.readInt32LE(loc+1)===0x129c3dc,'clock-base-call-target-mismatch-'+rva.toString(16));}
+  const objectFieldSignatures=[
+    {name:'base-zero-frame-field',rva:0x129c40f,hex:'48897118'},
+    {name:'variant-A-scale',rva:0x129c4e1,hex:'f20f114f20'},
+    {name:'variant-A-baseline',rva:0x129c50b,hex:'48894758'},
+    {name:'variant-B-scale',rva:0x129c542,hex:'48894320'},
+    {name:'variant-B-baseline',rva:0x129c56b,hex:'48894358'},
+  ];
+  for(const sig of objectFieldSignatures){const loc=at(sig.rva,sig.hex.length/2);requireEvidence(bytes.toString('hex',loc,loc+sig.hex.length/2)===sig.hex,'clock-object-field-signature-mismatch-'+sig.name);}
   return {
-    schemaVersion: 4, evidenceKind: 'exact-build-clock-slot-initializer/1',
+    schemaVersion: 5, evidenceKind: 'exact-build-clock-object-base-initializer/1',
     executableSha256: expectedSha.toLowerCase(), imageBase: '0x' + imageBase.toString(16),
     entries: fields.map(f => ({name:f.name, stringRva:'0x'+f.stringRva.toString(16), pointerRva:'0x'+f.pointerRva.toString(16)})),
     sharedNeighborStringRva: '0x26a5c8c',
@@ -122,8 +133,11 @@ export function verifyClockStringTable(bytes, expectedSha = EXPECTED_SHA) {
     sharedOutputSignatures: outputSignatures.map(s=>({name:s.name,instructionRva:'0x'+s.rva.toString(16)})),
     staticSlotWriterRva: '0x78e8fc',
     staticInitializerCalls: initializerCalls.map(c=>({name:c.name,instructionRva:'0x'+c.instructionRva.toString(16),targetRva:'0x'+c.targetRva.toString(16)})),
+    commonObjectBaseInitializerRva:'0x129c3dc',
+    commonObjectBaseCallsites:commonBaseCalls.map(rva=>'0x'+rva.toString(16)),
+    objectFieldSignatures:objectFieldSignatures.map(s=>({name:s.name,instructionRva:'0x'+s.rva.toString(16)})),
     nativeClockAccessorQualified: false, frameClockValueAddressQualified: false, utcClockPairQualified: false,
-    limitation: 'Direct slot assignment and nearby initializer callsites verified statically. Indirect/later writes, object lifetime, field ownership, live values and UTC pairing remain unverified.'
+    limitation: 'Base initializer zeroes object +0x18; variants populate Real scale/baseline fields. Later Frame field writers, object lifetime, live values and UTC pairing remain unverified.'
   };
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
