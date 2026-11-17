@@ -20,7 +20,9 @@ Work **offline first**, in bounded, timeout-resistant slices. Read-only live obs
 | P1 | SP-003 | Offline cast/queue state-machine contract | State transitions classify event evidence without claiming native/server acknowledgement | Complete (2026-11-16) |
 | P1 | SP-004 | Reuse existing RRE/RR2 saved evidence for timing and ability-identity contrasts | Machine-readable fixtures + tests; no raw private SavedVariables committed | Complete (2026-11-16) |
 | P1 | SP-005 | Native call-path dossiers for exact qualified game build | Callers, receiver, alternatives, reproducer and confidence per claim | In progress: SP-005A castbar, SP-005B callback, SP-005C helper comparison, SP-005D direct helper callsites verified; request submission unproven |
-| P2 | SP-006 | Integrate evidence map and handoff for a narrowly justified live experiment | Clear missing observation, consent/ownership gate and rollback/stop conditions | SP-006A/B/C archived evidence, SP-006D/E validators, SP-006F/G source audits and SP-006H synthetic provenance gate complete; live observation gated |
+| P2 | SP-006 | Integrate evidence map and handoff for a narrowly justified live experiment | Clear missing observation, consent/ownership gate and rollback/stop conditions | SP-006A/B/C archived evidence, SP-006D/E validators, SP-006F/G source audits, SP-006H synthetic provenance gate and SP-006I physical producer feasibility review complete; live observation gated |
+
+SP-006I feasibility checkpoint: existing RR2 physical memory scans retrieve buffered addon game-frame values, not a synchronous native game-frame/UTC pair. The design and negative result are in [`docs/SP-006I-physical-clock-producer-design.md`](docs/SP-006I-physical-clock-producer-design.md). Next qualify a read-only native clock source offline before considering a live measurement.
 
 ## Decision rules
 
