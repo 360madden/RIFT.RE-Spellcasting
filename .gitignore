@@ -1,0 +1,41 @@
+# Local editor / build output
+.vs/
+.vscode/
+.idea/
+bin/
+obj/
+build/
+dist/
+Debug/
+Release/
+*.user
+*.suo
+
+# Machine-local state and credentials
+.local/
+.env
+.env.*
+*.pfx
+*.key
+*.pem
+
+# Memory captures, crash dumps, and generated binary assets
+*.dmp
+*.mdmp
+*.core
+*.raw
+*.dump
+*.zip
+*.7z
+*.rar
+*.exe
+*.dll
+*.pdb
+*.obj
+*.ilk
+*.cache
+
+# Python caches
+__pycache__/
+*.pyc
+.venv/
