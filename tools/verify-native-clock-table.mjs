@@ -82,16 +82,33 @@ export function verifyClockStringTable(bytes, expectedSha = EXPECTED_SHA) {
     {name:'Server-integer-to-double',rva:0x9b6e8c,hex:'f2480f2ac8'},
   ];
   for(const sig of sourceSignatures)requireEvidence(bytes.toString('hex',at(sig.rva,sig.hex.length/2),at(sig.rva,sig.hex.length/2)+sig.hex.length/2)===sig.hex,'clock-source-signature-mismatch-'+sig.name);
+  // SP-006Q: both Frame and Real load the same global pointer; output helper stores doubles.
+  const globalLoads = [{rva:0x9b6d24,opcode:'488b05'}, {rva:0x9b6db4,opcode:'488b1d'}];
+  for (const {rva,opcode} of globalLoads) {
+    const loc=at(rva,7);
+    requireEvidence(bytes.toString('hex',loc,loc+3)===opcode,'clock-global-opcode-mismatch-'+rva.toString(16));
+    requireEvidence(rva+7+bytes.readInt32LE(loc+3)===0x33dc2b0,'clock-global-target-mismatch-'+rva.toString(16));
+  }
+  const outputSignatures = [
+    {name:'destination-pointer',rva:0x16893d0,hex:'488b4118'},
+    {name:'double-store',rva:0x16893d4,hex:'f20f1108'},
+    {name:'nan-check',rva:0x16893e0,hex:'660f2ec0'},
+    {name:'buffer-advance',rva:0x16893f3,hex:'4883411808'},
+  ];
+  for(const sig of outputSignatures){const loc=at(sig.rva,sig.hex.length/2);requireEvidence(bytes.toString('hex',loc,loc+sig.hex.length/2)===sig.hex,'clock-output-signature-mismatch-'+sig.name);}
   return {
-    schemaVersion: 2, evidenceKind: 'exact-build-clock-handler-callpath/1',
+    schemaVersion: 3, evidenceKind: 'exact-build-clock-handler-shared-global-output/1',
     executableSha256: expectedSha.toLowerCase(), imageBase: '0x' + imageBase.toString(16),
     entries: fields.map(f => ({name:f.name, stringRva:'0x'+f.stringRva.toString(16), pointerRva:'0x'+f.pointerRva.toString(16)})),
     sharedNeighborStringRva: '0x26a5c8c',
     staticRegistrationReferences: references.map(r => ({ name: r.name, instructionRva: '0x' + r.instructionRva.toString(16), targetRva: '0x' + r.targetRva.toString(16) })),
     staticHandlerCallsites: callsites.map(c => ({name:c.name, instructionRva:'0x'+c.instructionRva.toString(16), targetRva:'0x'+c.targetRva.toString(16)})),
     staticSourceSignatures: sourceSignatures.map(s => ({name:s.name, instructionRva:'0x'+s.rva.toString(16)})),
+    frameRealSharedGlobalRva: '0x33dc2b0',
+    sharedOutputHelperRva: '0x16893d0',
+    sharedOutputSignatures: outputSignatures.map(s=>({name:s.name,instructionRva:'0x'+s.rva.toString(16)})),
     nativeClockAccessorQualified: false, frameClockValueAddressQualified: false, utcClockPairQualified: false,
-    limitation: 'Exact-build native handler body callsites and source instructions only. No live clock value/address or UTC pairing verified; helper/virtual method semantics not independently resolved.'
+    limitation: 'Exact-build Frame/Real shared global pointer RVA and double-buffer writer verified statically. No live clock value, dynamic field ownership, or UTC pairing verified; large setup helper remains incompletely decoded.'
   };
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

@@ -15,10 +15,23 @@ test('exact-build clock-name table verifies without native accessor qualificatio
   assert.equal(result.staticHandlerCallsites.length, 9);
   assert.equal(result.staticHandlerCallsites[0].targetRva, '0x979ea0');
   assert.equal(result.staticSourceSignatures.length, 4);
+  assert.equal(result.frameRealSharedGlobalRva, '0x33dc2b0');
+  assert.equal(result.sharedOutputHelperRva, '0x16893d0');
+  assert.equal(result.sharedOutputSignatures.length, 4);
   assert.equal(result.staticRegistrationReferences[0].instructionRva, '0x9b6cc6');
   assert.equal(result.entries[0].stringRva, '0x26d85a8');
   assert.equal(result.nativeClockAccessorQualified, false);
   assert.equal(result.utcClockPairQualified, false);
+});
+test('changed Real global pointer displacement fails under synthetic rehash', () => {
+  const changed = Buffer.from(original);
+  changed[0x9b61b7] ^= 1;
+  assert.throws(() => verifyClockStringTable(changed, digest(changed)), /clock-global-target-mismatch-9b6db4/);
+});
+test('changed shared double-output opcode fails under synthetic rehash', () => {
+  const changed = Buffer.from(original);
+  changed[0x16887d4] ^= 1;
+  assert.throws(() => verifyClockStringTable(changed, digest(changed)), /clock-output-signature-mismatch-double-store/);
 });
 test('changed Frame native source instruction fails under synthetic rehash', () => {
   const changed = Buffer.from(original);
