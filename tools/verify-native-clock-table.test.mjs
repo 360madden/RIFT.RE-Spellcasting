@@ -28,6 +28,33 @@ test('exact-build clock-name table verifies without native accessor qualificatio
   assert.equal(result.nativeClockAccessorQualified, false);
   assert.equal(result.utcClockPairQualified, false);
 });
+const rvaOffset = (bytes, rva) => {
+  const nt=bytes.readUInt32LE(0x3c);
+  const first=nt+24+bytes.readUInt16LE(nt+20);
+  for(let i=0;i<bytes.readUInt16LE(nt+6);i++){
+    const s=first+40*i, start=bytes.readUInt32LE(s+12), size=bytes.readUInt32LE(s+16);
+    if(rva>=start&&rva<start+size)return bytes.readUInt32LE(s+20)+rva-start;
+  }
+  throw new Error('unmapped-rva');
+};
+
+test('three initializer-selected vtables are independently verified', () => {
+  const result=verifyClockStringTable(original);
+  assert.equal(result.schemaVersion,6);
+  assert.deepEqual(result.clockObjectVtables.map(x=>x.tableRva),['0x2776090','0x27760a0','0x27760b0']);
+  assert.equal(result.clockObjectVtables[2].entryRvas[1],'0x129c6ac');
+});
+test('changed variant A vtable lea target fails under synthetic rehash', () => {
+  const changed=Buffer.from(original);
+  changed[rvaOffset(changed,0x129c491)]^=1;
+  assert.throws(()=>verifyClockStringTable(changed,digest(changed)),/clock-vtable-lea-target-mismatch-variant-A/);
+});
+test('changed variant B vtable method pointer fails under synthetic rehash', () => {
+  const changed=Buffer.from(original);
+  changed[rvaOffset(changed,0x27760b8)]^=1;
+  assert.throws(()=>verifyClockStringTable(changed,digest(changed)),/clock-vtable-entry-mismatch-variant-B-1/);
+});
+
 test('changed base Frame-field zeroing fails under synthetic rehash', () => {
   const changed=Buffer.from(original);
   changed[0x129b80f]^=1;

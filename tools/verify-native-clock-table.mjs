@@ -120,8 +120,22 @@ export function verifyClockStringTable(bytes, expectedSha = EXPECTED_SHA) {
     {name:'variant-B-baseline',rva:0x129c56b,hex:'48894358'},
   ];
   for(const sig of objectFieldSignatures){const loc=at(sig.rva,sig.hex.length/2);requireEvidence(bytes.toString('hex',loc,loc+sig.hex.length/2)===sig.hex,'clock-object-field-signature-mismatch-'+sig.name);}
+  // SP-006X: three constructor-selected adjacent candidate two-entry vtables.
+  const objectVtables=[
+    {name:'base',leaRva:0x129c3f4,storeRva:0x129c3ff,tableRva:0x2776090,entryRvas:[0x129c5d4,0x25047bb],storeHex:'488901'},
+    {name:'variant-A',leaRva:0x129c48e,storeRva:0x129c49a,tableRva:0x27760a0,entryRvas:[0x129c5d4,0x129c6a0],storeHex:'488907'},
+    {name:'variant-B',leaRva:0x129c526,storeRva:0x129c535,tableRva:0x27760b0,entryRvas:[0x129c5d4,0x129c6ac],storeHex:'488903'},
+  ];
+  for(const vt of objectVtables){
+    const loc=at(vt.leaRva,7);
+    requireEvidence(bytes.toString('hex',loc,loc+3)==='488d05','clock-vtable-lea-opcode-mismatch-'+vt.name);
+    requireEvidence(vt.leaRva+7+bytes.readInt32LE(loc+3)===vt.tableRva,'clock-vtable-lea-target-mismatch-'+vt.name);
+    const store=at(vt.storeRva,vt.storeHex.length/2);
+    requireEvidence(bytes.toString('hex',store,store+vt.storeHex.length/2)===vt.storeHex,'clock-vtable-store-mismatch-'+vt.name);
+    for(let slot=0;slot<vt.entryRvas.length;slot++)requireEvidence(bytes.readBigUInt64LE(at(vt.tableRva+slot*8,8))===imageBase+BigInt(vt.entryRvas[slot]),'clock-vtable-entry-mismatch-'+vt.name+'-'+slot);
+  }
   return {
-    schemaVersion: 5, evidenceKind: 'exact-build-clock-object-base-initializer/1',
+    schemaVersion: 6, evidenceKind: 'exact-build-clock-object-vtable-variants/1',
     executableSha256: expectedSha.toLowerCase(), imageBase: '0x' + imageBase.toString(16),
     entries: fields.map(f => ({name:f.name, stringRva:'0x'+f.stringRva.toString(16), pointerRva:'0x'+f.pointerRva.toString(16)})),
     sharedNeighborStringRva: '0x26a5c8c',
@@ -136,6 +150,7 @@ export function verifyClockStringTable(bytes, expectedSha = EXPECTED_SHA) {
     commonObjectBaseInitializerRva:'0x129c3dc',
     commonObjectBaseCallsites:commonBaseCalls.map(rva=>'0x'+rva.toString(16)),
     objectFieldSignatures:objectFieldSignatures.map(s=>({name:s.name,instructionRva:'0x'+s.rva.toString(16)})),
+    clockObjectVtables:objectVtables.map(v=>({name:v.name,tableRva:'0x'+v.tableRva.toString(16),entryRvas:v.entryRvas.map(r=>'0x'+r.toString(16))})), 
     nativeClockAccessorQualified: false, frameClockValueAddressQualified: false, utcClockPairQualified: false,
     limitation: 'Base initializer zeroes object +0x18; variants populate Real scale/baseline fields. Later Frame field writers, object lifetime, live values and UTC pairing remain unverified.'
   };
