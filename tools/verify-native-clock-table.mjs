@@ -96,8 +96,21 @@ export function verifyClockStringTable(bytes, expectedSha = EXPECTED_SHA) {
     {name:'buffer-advance',rva:0x16893f3,hex:'4883411808'},
   ];
   for(const sig of outputSignatures){const loc=at(sig.rva,sig.hex.length/2);requireEvidence(bytes.toString('hex',loc,loc+sig.hex.length/2)===sig.hex,'clock-output-signature-mismatch-'+sig.name);}
+  // SP-006R: bounded direct writer and conditional allocation/initialization flow.
+  const writerRva=0x78e8fc;
+  const writerOffset=at(writerRva,7);
+  requireEvidence(bytes.toString('hex',writerOffset,writerOffset+3)==='488905','clock-slot-writer-opcode-mismatch');
+  requireEvidence(writerRva+7+bytes.readInt32LE(writerOffset+3)===0x33dc2b0,'clock-slot-writer-target-mismatch');
+  const initializerCalls=[
+    {name:'allocation',instructionRva:0x78e8d1,targetRva:0x137e4e0},
+    {name:'branch-A',instructionRva:0x78e8e3,targetRva:0x129c47c},
+    {name:'branch-B',instructionRva:0x78e8f2,targetRva:0x129c518},
+  ];
+  for(const call of initializerCalls){const loc=at(call.instructionRva,5);requireEvidence(bytes[loc]===0xe8,'clock-init-call-opcode-mismatch-'+call.name);requireEvidence(call.instructionRva+5+bytes.readInt32LE(loc+1)===call.targetRva,'clock-init-call-target-mismatch-'+call.name);}
+  const fallback=at(0x78e8f9,3);
+  requireEvidence(bytes.toString('hex',fallback,fallback+3)==='498bc6','clock-init-fallback-mismatch');
   return {
-    schemaVersion: 3, evidenceKind: 'exact-build-clock-handler-shared-global-output/1',
+    schemaVersion: 4, evidenceKind: 'exact-build-clock-slot-initializer/1',
     executableSha256: expectedSha.toLowerCase(), imageBase: '0x' + imageBase.toString(16),
     entries: fields.map(f => ({name:f.name, stringRva:'0x'+f.stringRva.toString(16), pointerRva:'0x'+f.pointerRva.toString(16)})),
     sharedNeighborStringRva: '0x26a5c8c',
@@ -107,8 +120,10 @@ export function verifyClockStringTable(bytes, expectedSha = EXPECTED_SHA) {
     frameRealSharedGlobalRva: '0x33dc2b0',
     sharedOutputHelperRva: '0x16893d0',
     sharedOutputSignatures: outputSignatures.map(s=>({name:s.name,instructionRva:'0x'+s.rva.toString(16)})),
+    staticSlotWriterRva: '0x78e8fc',
+    staticInitializerCalls: initializerCalls.map(c=>({name:c.name,instructionRva:'0x'+c.instructionRva.toString(16),targetRva:'0x'+c.targetRva.toString(16)})),
     nativeClockAccessorQualified: false, frameClockValueAddressQualified: false, utcClockPairQualified: false,
-    limitation: 'Exact-build Frame/Real shared global pointer RVA and double-buffer writer verified statically. No live clock value, dynamic field ownership, or UTC pairing verified; large setup helper remains incompletely decoded.'
+    limitation: 'Direct slot assignment and nearby initializer callsites verified statically. Indirect/later writes, object lifetime, field ownership, live values and UTC pairing remain unverified.'
   };
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

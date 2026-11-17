@@ -18,10 +18,22 @@ test('exact-build clock-name table verifies without native accessor qualificatio
   assert.equal(result.frameRealSharedGlobalRva, '0x33dc2b0');
   assert.equal(result.sharedOutputHelperRva, '0x16893d0');
   assert.equal(result.sharedOutputSignatures.length, 4);
+  assert.equal(result.staticSlotWriterRva, '0x78e8fc');
+  assert.equal(result.staticInitializerCalls.length, 3);
   assert.equal(result.staticRegistrationReferences[0].instructionRva, '0x9b6cc6');
   assert.equal(result.entries[0].stringRva, '0x26d85a8');
   assert.equal(result.nativeClockAccessorQualified, false);
   assert.equal(result.utcClockPairQualified, false);
+});
+test('changed direct slot-writer opcode fails under synthetic rehash', () => {
+  const changed=Buffer.from(original);
+  changed[0x78dcfc]^=1;
+  assert.throws(()=>verifyClockStringTable(changed,digest(changed)),/clock-slot-writer-opcode-mismatch/);
+});
+test('changed conditional initializer call target fails under synthetic rehash', () => {
+  const changed=Buffer.from(original);
+  changed[0x78dce4]^=1;
+  assert.throws(()=>verifyClockStringTable(changed,digest(changed)),/clock-init-call-target-mismatch-branch-A/);
 });
 test('changed Real global pointer displacement fails under synthetic rehash', () => {
   const changed = Buffer.from(original);
