@@ -58,14 +58,40 @@ export function verifyClockStringTable(bytes, expectedSha = EXPECTED_SHA) {
     requireEvidence(bytes.toString('hex', location, location + 3) === ref.opcode, 'registration-opcode-mismatch-' + ref.name);
     requireEvidence(ref.instructionRva + 7 + bytes.readInt32LE(location + 3) === ref.targetRva, 'registration-displacement-mismatch-' + ref.name);
   }
+  // Capstone-confirmed bounded handler bodies: common setup/output calls, distinct source paths.
+  const callsites = [
+    { name:'Frame-setup', instructionRva:0x9b6d1f, targetRva:0x979ea0 },
+    { name:'Frame-output', instructionRva:0x9b6d36, targetRva:0x16893d0 },
+    { name:'Real-setup', instructionRva:0x9b6daf, targetRva:0x979ea0 },
+    { name:'Real-output', instructionRva:0x9b6de9, targetRva:0x16893d0 },
+    { name:'Server-setup', instructionRva:0x9b6e5f, targetRva:0x979ea0 },
+    { name:'Server-stage1', instructionRva:0x9b6e6c, targetRva:0x1295d78 },
+    { name:'Server-stage2', instructionRva:0x9b6e79, targetRva:0x1294e24 },
+    { name:'Server-stage3', instructionRva:0x9b6e81, targetRva:0x12959fc },
+    { name:'Server-output', instructionRva:0x9b6e91, targetRva:0x16893d0 },
+  ];
+  for (const call of callsites) {
+    const loc=at(call.instructionRva,5);
+    requireEvidence(bytes[loc]===0xe8,'clock-call-opcode-mismatch-'+call.name);
+    requireEvidence(call.instructionRva+5+bytes.readInt32LE(loc+1)===call.targetRva,'clock-call-target-mismatch-'+call.name);
+  }
+  const sourceSignatures = [
+    {name:'Frame-float-field',rva:0x9b6d2e,hex:'f30f104818'},
+    {name:'Real-virtual-clock',rva:0x9b6dc6,hex:'ff5008'},
+    {name:'Real-offset',rva:0x9b6dd1,hex:'482b4358'},
+    {name:'Server-integer-to-double',rva:0x9b6e8c,hex:'f2480f2ac8'},
+  ];
+  for(const sig of sourceSignatures)requireEvidence(bytes.toString('hex',at(sig.rva,sig.hex.length/2),at(sig.rva,sig.hex.length/2)+sig.hex.length/2)===sig.hex,'clock-source-signature-mismatch-'+sig.name);
   return {
-    schemaVersion: 1, evidenceKind: 'exact-build-clock-name-pointer-table/1',
+    schemaVersion: 2, evidenceKind: 'exact-build-clock-handler-callpath/1',
     executableSha256: expectedSha.toLowerCase(), imageBase: '0x' + imageBase.toString(16),
     entries: fields.map(f => ({name:f.name, stringRva:'0x'+f.stringRva.toString(16), pointerRva:'0x'+f.pointerRva.toString(16)})),
     sharedNeighborStringRva: '0x26a5c8c',
-    staticRegistrationReferences: references.map(r => ({ name: r.name, instructionRva: '0x' + r.instructionRva.toString(16), targetRva: '0x' + r.targetRva.toString(16) })), 
+    staticRegistrationReferences: references.map(r => ({ name: r.name, instructionRva: '0x' + r.instructionRva.toString(16), targetRva: '0x' + r.targetRva.toString(16) })),
+    staticHandlerCallsites: callsites.map(c => ({name:c.name, instructionRva:'0x'+c.instructionRva.toString(16), targetRva:'0x'+c.targetRva.toString(16)})),
+    staticSourceSignatures: sourceSignatures.map(s => ({name:s.name, instructionRva:'0x'+s.rva.toString(16)})),
     nativeClockAccessorQualified: false, frameClockValueAddressQualified: false, utcClockPairQualified: false,
-    limitation: 'Static name and pointer-table facts only. No function pointer, native getter, source semantics, live event or server request proven.'
+    limitation: 'Exact-build native handler body callsites and source instructions only. No live clock value/address or UTC pairing verified; helper/virtual method semantics not independently resolved.'
   };
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

@@ -12,10 +12,23 @@ test('exact-build clock-name table verifies without native accessor qualificatio
   const result = verifyClockStringTable(original);
   assert.equal(result.entries.length, 3);
   assert.equal(result.staticRegistrationReferences.length, 4);
+  assert.equal(result.staticHandlerCallsites.length, 9);
+  assert.equal(result.staticHandlerCallsites[0].targetRva, '0x979ea0');
+  assert.equal(result.staticSourceSignatures.length, 4);
   assert.equal(result.staticRegistrationReferences[0].instructionRva, '0x9b6cc6');
   assert.equal(result.entries[0].stringRva, '0x26d85a8');
   assert.equal(result.nativeClockAccessorQualified, false);
   assert.equal(result.utcClockPairQualified, false);
+});
+test('changed Frame native source instruction fails under synthetic rehash', () => {
+  const changed = Buffer.from(original);
+  changed[0x9b612e] ^= 1;
+  assert.throws(() => verifyClockStringTable(changed, digest(changed)), /clock-source-signature-mismatch-Frame-float-field/);
+});
+test('changed Real shared output call target fails under synthetic rehash', () => {
+  const changed = Buffer.from(original);
+  changed[0x9b61ea] ^= 1;
+  assert.throws(() => verifyClockStringTable(changed, digest(changed)), /clock-call-target-mismatch-Real-output/);
 });
 test('changed Frame registration opcode fails under synthetic rehash', () => {
   const changed = Buffer.from(original);
