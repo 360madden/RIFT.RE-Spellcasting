@@ -40,7 +40,7 @@ const rvaOffset = (bytes, rva) => {
 
 test('three initializer-selected vtables are independently verified', () => {
   const result=verifyClockStringTable(original);
-  assert.equal(result.schemaVersion,6);
+  assert.equal(result.schemaVersion,7);
   assert.deepEqual(result.clockObjectVtables.map(x=>x.tableRva),['0x2776090','0x27760a0','0x27760b0']);
   assert.equal(result.clockObjectVtables[2].entryRvas[1],'0x129c6ac');
 });
@@ -53,6 +53,26 @@ test('changed variant B vtable method pointer fails under synthetic rehash', () 
   const changed=Buffer.from(original);
   changed[rvaOffset(changed,0x27760b8)]^=1;
   assert.throws(()=>verifyClockStringTable(changed,digest(changed)),/clock-vtable-entry-mismatch-variant-B-1/);
+});
+
+test('three exact shared-global update callers reach the native Frame writer', () => {
+  const result=verifyClockStringTable(original);
+  assert.equal(result.schemaVersion,7);
+  assert.equal(result.nativeFrameFieldWriterRva,'0x129c8b1');
+  assert.equal(result.nativeFrameUpdateRoutineRva,'0x129c774');
+  assert.equal(result.nativeFrameUpdateCallsites.length,3);
+  assert.equal(result.nativeFrameFieldWriterStaticQualified,true);
+  assert.equal(result.frameClockValueAddressQualified,false);
+});
+test('changed Frame-field float store fails synthetic rehash', () => {
+  const changed=Buffer.from(original);
+  changed[rvaOffset(changed,0x129c8b1)]^=1;
+  assert.throws(()=>verifyClockStringTable(changed,digest(changed)),/frame-update-float-store-mismatch/);
+});
+test('changed direct Frame updater target fails synthetic rehash', () => {
+  const changed=Buffer.from(original);
+  changed[rvaOffset(changed,0x78748d)]^=1;
+  assert.throws(()=>verifyClockStringTable(changed,digest(changed)),/frame-update-call-target-mismatch-78748c/);
 });
 
 test('changed base Frame-field zeroing fails under synthetic rehash', () => {

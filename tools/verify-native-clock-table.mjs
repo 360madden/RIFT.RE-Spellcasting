@@ -134,8 +134,25 @@ export function verifyClockStringTable(bytes, expectedSha = EXPECTED_SHA) {
     requireEvidence(bytes.toString('hex',store,store+vt.storeHex.length/2)===vt.storeHex,'clock-vtable-store-mismatch-'+vt.name);
     for(let slot=0;slot<vt.entryRvas.length;slot++)requireEvidence(bytes.readBigUInt64LE(at(vt.tableRva+slot*8,8))===imageBase+BigInt(vt.entryRvas[slot]),'clock-vtable-entry-mismatch-'+vt.name+'-'+slot);
   }
+  // SP-006Y: three exact direct callers load the shared slot into RCX before the update call.
+  const frameUpdateCallsites=[
+    {loadRva:0x787485,callRva:0x78748c},
+    {loadRva:0xfcb99c,callRva:0xfcb9a3},
+    {loadRva:0xfcbc18,callRva:0xfcbc1f},
+  ];
+  for(const site of frameUpdateCallsites){
+    const load=at(site.loadRva,7);
+    requireEvidence(bytes.toString('hex',load,load+3)==='488b0d','frame-update-global-load-opcode-mismatch-'+site.callRva.toString(16));
+    requireEvidence(site.loadRva+7+bytes.readInt32LE(load+3)===0x33dc2b0,'frame-update-global-load-target-mismatch-'+site.callRva.toString(16));
+    const call=at(site.callRva,5);
+    requireEvidence(bytes[call]===0xe8,'frame-update-call-opcode-mismatch-'+site.callRva.toString(16));
+    requireEvidence(site.callRva+5+bytes.readInt32LE(call+1)===0x129c774,'frame-update-call-target-mismatch-'+site.callRva.toString(16));
+  }
+  const receiver=at(0x129c787,3), writer=at(0x129c8b1,5);
+  requireEvidence(bytes.toString('hex',receiver,receiver+3)==='488bd9','frame-update-receiver-copy-mismatch');
+  requireEvidence(bytes.toString('hex',writer,writer+5)==='f30f114318','frame-update-float-store-mismatch');
   return {
-    schemaVersion: 6, evidenceKind: 'exact-build-clock-object-vtable-variants/1',
+    schemaVersion: 7, evidenceKind: 'exact-build-frame-field-writer-callchain/1',
     executableSha256: expectedSha.toLowerCase(), imageBase: '0x' + imageBase.toString(16),
     entries: fields.map(f => ({name:f.name, stringRva:'0x'+f.stringRva.toString(16), pointerRva:'0x'+f.pointerRva.toString(16)})),
     sharedNeighborStringRva: '0x26a5c8c',
@@ -150,9 +167,12 @@ export function verifyClockStringTable(bytes, expectedSha = EXPECTED_SHA) {
     commonObjectBaseInitializerRva:'0x129c3dc',
     commonObjectBaseCallsites:commonBaseCalls.map(rva=>'0x'+rva.toString(16)),
     objectFieldSignatures:objectFieldSignatures.map(s=>({name:s.name,instructionRva:'0x'+s.rva.toString(16)})),
-    clockObjectVtables:objectVtables.map(v=>({name:v.name,tableRva:'0x'+v.tableRva.toString(16),entryRvas:v.entryRvas.map(r=>'0x'+r.toString(16))})), 
+    clockObjectVtables:objectVtables.map(v=>({name:v.name,tableRva:'0x'+v.tableRva.toString(16),entryRvas:v.entryRvas.map(r=>'0x'+r.toString(16))})),
+    nativeFrameFieldWriterRva:'0x129c8b1', nativeFrameUpdateRoutineRva:'0x129c774',
+    nativeFrameUpdateCallsites:frameUpdateCallsites.map(s=>({loadRva:'0x'+s.loadRva.toString(16),callRva:'0x'+s.callRva.toString(16)})),
+    nativeFrameFieldWriterStaticQualified:true, 
     nativeClockAccessorQualified: false, frameClockValueAddressQualified: false, utcClockPairQualified: false,
-    limitation: 'Base initializer zeroes object +0x18; variants populate Real scale/baseline fields. Later Frame field writers, object lifetime, live values and UTC pairing remain unverified.'
+    limitation: 'Native function 0x129C774 writes float object +0x18 with three exact direct global-pointer callers. Runtime cadence, units, exact live instance, clock pairing and live readout remain unverified.'
   };
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
