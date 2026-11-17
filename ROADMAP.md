@@ -17,7 +17,7 @@ Work **offline first**, in bounded, timeout-resistant slices. Read-only live obs
 | --- | --- | --- | --- | --- |
 | P0 | SP-001 | Evidence registry with sibling file hashes and drift check | Three independent source-backed findings; local hash check exits 0; unknowns explicit | Complete (2026-11-16) |
 | P0 | SP-002 | Extract precise spellcasting research questions from current RRE SC board | Each question has source, competing hypotheses and smallest offline discriminating test | Complete (2026-11-16) |
-| P1 | SP-003 | Offline cast/queue state-machine contract | State transitions classify event evidence without claiming native/server acknowledgement | Planned |
+| P1 | SP-003 | Offline cast/queue state-machine contract | State transitions classify event evidence without claiming native/server acknowledgement | Complete (2026-11-16) |
 | P1 | SP-004 | Reuse existing RRE/RR2 saved evidence for timing and ability-identity contrasts | Machine-readable fixtures + tests; no raw private SavedVariables committed | Planned |
 | P1 | SP-005 | Native call-path dossiers for exact qualified game build | Callers, receiver, alternatives, reproducer and confidence per claim | Planned |
 | P2 | SP-006 | Integrate evidence map and handoff for a narrowly justified live experiment | Clear missing observation, consent/ownership gate and rollback/stop conditions | Planned |
@@ -32,4 +32,4 @@ Work **offline first**, in bounded, timeout-resistant slices. Read-only live obs
 
 ## Current next step
 
-SP-001 complete: `node tools/verify-evidence.mjs` verified 3/3 sibling source hashes (exit 0). SP-002 complete: [`docs/SP-002-question-selection.md`](docs/SP-002-question-selection.md) selects a source-bounded offline cast-evidence classifier. Next implement SP-003 and its synthetic tests, without claiming server acknowledgment or touching the live game.
+SP-001 complete: `node tools/verify-evidence.mjs` verified 3/3 sibling source hashes (exit 0). SP-002 complete: [`docs/SP-002-question-selection.md`](docs/SP-002-question-selection.md) selects a source-bounded offline cast-evidence classifier. SP-003 complete: 6/6 offline classifier tests and 3/3 evidence hash checks passed. Next SP-004: reuse *existing* recorded evidence as sanitized clock-domain fixtures without copying private data; no live testing.

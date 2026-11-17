@@ -14,9 +14,20 @@ Initial repository setup. Research findings, reproducible offline experiments, a
 - Keep live-client experiments small, controlled, and explicitly identified.
 - Avoid committing local credentials, memory dumps, generated binaries, or proprietary game assets.
 
+## Offline reproducibility checks
+
+On AMD-DESKTOP, open PowerShell in `C:\work\RIFT.RE-Spellcasting` and run:
+
+```powershell
+node tools/verify-evidence.mjs
+node --test tools/classify-cast-evidence.test.mjs
+```
+
+The source-pinned evidence index is in `docs/evidence-index.json`; the project priorities are in `ROADMAP.md`. The classifier treats actual server acknowledgement and queue behavior as **unknown** unless separately supported. Its current tests use synthetic events, not live gameplay.
+
 ## Planned structure
 
-Documentation, experiments, tools, and tests will be added as the project takes shape.
+Further documentation, experiments, tools, and tests will be added after each verified milestone.
 
 ## Related work
 
