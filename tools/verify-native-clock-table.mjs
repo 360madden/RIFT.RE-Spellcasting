@@ -179,8 +179,27 @@ export function verifyClockStringTable(bytes, expectedSha = EXPECTED_SHA) {
     {name:'variant-B-write-counter',rva:0x129c6ba,hex:'488903'},
   ];
   for(const sig of counterPathSignatures){const loc=at(sig.rva,sig.hex.length/2);requireEvidence(bytes.toString('hex',loc,loc+sig.hex.length/2)===sig.hex,'clock-counter-signature-mismatch-'+sig.name);}
+  // SP-007B: PE import lookup independently mapped A's IAT to QPC/QPF,
+  // B's fallback to GetTickCount, and B's dynamic name to GetTickCount64.
+  const timerImportReferences=[
+    {name:'A-query-performance-counter',rva:0x129c6a3,targetRva:0x25ef2f0,hex:'48ff25'},
+    {name:'A-query-performance-frequency',rva:0x129c49d,targetRva:0x25ef2f8,hex:'ff15'},
+    {name:'B-fallback-get-tick-count',rva:0x129c624,targetRva:0x25ef338,hex:'ff15'},
+    {name:'B-kernel32-library-string',rva:0x129c705,targetRva:0x26ad170,hex:'488d0d'},
+    {name:'B-get-tick-count-64-name',rva:0x129c715,targetRva:0x27760c0,hex:'488d15'},
+    {name:'B-load-library-w',rva:0x129c70c,targetRva:0x25ef750,hex:'ff15'},
+    {name:'B-get-proc-address',rva:0x129c71f,targetRva:0x25ef758,hex:'ff15'},
+  ];
+  for(const ref of timerImportReferences){
+    const op=ref.hex.length/2, loc=at(ref.rva,op+4);
+    requireEvidence(bytes.toString('hex',loc,loc+op)===ref.hex,'clock-timer-import-opcode-mismatch-'+ref.name);
+    requireEvidence(ref.rva+op+4+bytes.readInt32LE(loc+op)===ref.targetRva,'clock-timer-import-target-mismatch-'+ref.name);
+  }
+  const tickName='GetTickCount64\0', dllName='kernel32.dll\0';
+  requireEvidence(bytes.toString('ascii',at(0x27760c0,tickName.length),at(0x27760c0,tickName.length)+tickName.length)===tickName,'clock-timer-dynamic-name-mismatch');
+  requireEvidence(bytes.toString('utf16le',at(0x26ad170,dllName.length*2),at(0x26ad170,dllName.length*2)+dllName.length*2)===dllName,'clock-timer-dll-name-mismatch');
   return {
-    schemaVersion: 9, evidenceKind: 'exact-build-frame-counter-update-chain/1',
+    schemaVersion: 10, evidenceKind: 'exact-build-frame-timer-import-paths/1',
     executableSha256: expectedSha.toLowerCase(), imageBase: '0x' + imageBase.toString(16),
     entries: fields.map(f => ({name:f.name, stringRva:'0x'+f.stringRva.toString(16), pointerRva:'0x'+f.pointerRva.toString(16)})),
     sharedNeighborStringRva: '0x26a5c8c',
@@ -204,7 +223,10 @@ export function verifyClockStringTable(bytes, expectedSha = EXPECTED_SHA) {
     variantBSecondsScaleStaticQualified:true, activeRuntimeVariantQualified:false,
     counterPathSignatures:counterPathSignatures.map(s=>({name:s.name,instructionRva:'0x'+s.rva.toString(16)})),
     counterVirtualMethodOffset:8, counterFieldOffset:64, counterDeltaOverrideFieldOffset:80,
-    counterUpdatePathStaticQualified:true, counterSourceApiQualified:false, updateCadenceQualified:false,
+    counterUpdatePathStaticQualified:true, counterSourceApiQualified:true, updateCadenceQualified:false,
+    timerImportReferences:timerImportReferences.map(r=>({name:r.name,instructionRva:'0x'+r.rva.toString(16),targetRva:'0x'+r.targetRva.toString(16)})),
+    staticClockApis:{variantA:['QueryPerformanceCounter','QueryPerformanceFrequency'],variantB:['GetTickCount64','GetTickCount']},
+    dynamicGetTickCount64ResolverStaticQualified:true, activeRuntimeTimerApiQualified:false,
     nativeClockAccessorQualified: false, frameClockValueAddressQualified: false, utcClockPairQualified: false,
     limitation: 'Variant B encodes counter frequency 1000.0 and reciprocal scale 0.001; update routine multiplies by scale before writing Frame +0x18. Whether variant B is active and whether the exposed Frame value is elapsed seconds in live gameplay remain unverified.'
   };

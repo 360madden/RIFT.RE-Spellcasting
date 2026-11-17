@@ -40,7 +40,7 @@ const rvaOffset = (bytes, rva) => {
 
 test('three initializer-selected vtables are independently verified', () => {
   const result=verifyClockStringTable(original);
-  assert.equal(result.schemaVersion,9);
+  assert.equal(result.schemaVersion,10);
   assert.deepEqual(result.clockObjectVtables.map(x=>x.tableRva),['0x2776090','0x27760a0','0x27760b0']);
   assert.equal(result.clockObjectVtables[2].entryRvas[1],'0x129c6ac');
 });
@@ -57,7 +57,7 @@ test('changed variant B vtable method pointer fails under synthetic rehash', () 
 
 test('three exact shared-global update callers reach the native Frame writer', () => {
   const result=verifyClockStringTable(original);
-  assert.equal(result.schemaVersion,9);
+  assert.equal(result.schemaVersion,10);
   assert.equal(result.nativeFrameFieldWriterRva,'0x129c8b1');
   assert.equal(result.nativeFrameUpdateRoutineRva,'0x129c774');
   assert.equal(result.nativeFrameUpdateCallsites.length,3);
@@ -89,7 +89,7 @@ test('Frame update dispatches per-variant counter method and accumulates raw del
   assert.equal(result.counterFieldOffset,0x40);
   assert.equal(result.counterDeltaOverrideFieldOffset,0x50);
   assert.equal(result.counterUpdatePathStaticQualified,true);
-  assert.equal(result.counterSourceApiQualified,false);
+  assert.equal(result.counterSourceApiQualified,true);
   assert.equal(result.updateCadenceQualified,false);
 });
 test('mutated counter virtual dispatch fails synthetic rehash', () => {
@@ -101,6 +101,24 @@ test('mutated raw delta accumulation fails synthetic rehash', () => {
   const changed=Buffer.from(original);
   changed[rvaOffset(changed,0x129c7b1)]^=1;
   assert.throws(()=>verifyClockStringTable(changed,digest(changed)),/clock-counter-signature-mismatch-raw-delta-accumulate/);
+});
+test('native timer API static routing is qualified, active branch remains unknown', () => {
+  const result=verifyClockStringTable(original);
+  assert.equal(result.counterSourceApiQualified,true);
+  assert.deepEqual(result.staticClockApis.variantA,['QueryPerformanceCounter','QueryPerformanceFrequency']);
+  assert.deepEqual(result.staticClockApis.variantB,['GetTickCount64','GetTickCount']);
+  assert.equal(result.timerImportReferences.length,7);
+  assert.equal(result.activeRuntimeTimerApiQualified,false);
+});
+test('mutated high-resolution frequency import target fails synthetic rehash', () => {
+  const changed=Buffer.from(original);
+  changed[rvaOffset(changed,0x129c49f)]^=1;
+  assert.throws(()=>verifyClockStringTable(changed,digest(changed)),/clock-timer-import-target-mismatch-A-query-performance-frequency/);
+});
+test('mutated dynamic GetTickCount64 name fails synthetic rehash', () => {
+  const changed=Buffer.from(original);
+  changed[rvaOffset(changed,0x27760c0)]^=1;
+  assert.throws(()=>verifyClockStringTable(changed,digest(changed)),/clock-timer-dynamic-name-mismatch/);
 });
 test('changed Frame-field float store fails synthetic rehash', () => {
   const changed=Buffer.from(original);
