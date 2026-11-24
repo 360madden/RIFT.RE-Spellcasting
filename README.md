@@ -32,7 +32,7 @@ files only; it never launches or modifies the client. A changed hash does not
 qualify old addresses for the new build.
 
 ```powershell
-python -B -m unittest discover -s tools -p test_patch_preflight.py -v
+python -B -m unittest discover -s tools -p 'test_*.py' -v
 python -B tools/patch_preflight.py --inspect-only --candidate 'C:\Program Files (x86)\Glyph\Games\RIFT\Live\rift_x64.exe'
 python -B tools/patch_preflight.py --baseline 'C:\work\rift-build-archives\2026-11-17\rift_x64.exe' --candidate 'C:\Program Files (x86)\Glyph\Games\RIFT\Live\rift_x64.exe'
 ```
@@ -40,6 +40,22 @@ python -B tools/patch_preflight.py --baseline 'C:\work\rift-build-archives\2026-
 Exit 0: identical build. Exit 3: changed or candidate-only, unqualified.
 Exit 2: blocked (including missing or wrong baseline). JSON includes SHA-256,
 PE section fingerprints and layout. See [LEGION validation](docs/PATCH-PREFLIGHT-LEGION.md).
+
+### Shared Update Helper interoperability
+
+The separate Update Helper utility owns whole-install captures and manifest
+validation. Spellcasting consumes a completed capture through the pinned,
+read-only validator; it does not duplicate the installation scanner.
+
+```powershell
+python -B tools/verify_update_manifest.py --manifest 'C:\work\Update Helper\after.json' --candidate 'C:\Program Files (x86)\Glyph\Games\RIFT\Live\rift_x64.exe' --expected-host LEGION --phase after
+```
+
+Use the actual capture filename; the example does not imply that a capture
+already exists. Exit 3 means the executable identity is bound to a verified
+manifest but native semantics remain unqualified. Exit 2 means blocked.
+The external validator is pinned by SHA-256 and must be reviewed again if
+updated. See [integration evidence](docs/PATCH-UPDATE-HELPER-INTEGRATION.md).
 
 Historical native PE tests are **explicitly opt-in**. Without RIFT_EXE_PATH,
 Node runs portable tests and reports the historical cases as skipped. An
