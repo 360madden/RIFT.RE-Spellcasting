@@ -1,11 +1,14 @@
-import test from 'node:test';
+import { test as nodeTest } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { verifyClockStringTable } from './verify-native-clock-table.mjs';
 
-const path = 'C:\\Program Files (x86)\\Glyph\\Games\\RIFT\\Live\\rift_x64.exe';
-const original = readFileSync(path);
+// Historical native tests are opt-in: the installed game may have patched.
+// Explicitly supplied missing files fail loudly, rather than silently skipping.
+const path = process.env.RIFT_EXE_PATH;
+const original = path ? readFileSync(path) : null;
+const test = (name, fn) => nodeTest(name, {skip: !path ? 'Set RIFT_EXE_PATH to the exact historical PE' : false}, fn);
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 
 test('exact-build clock-name table verifies without native accessor qualification', () => {
