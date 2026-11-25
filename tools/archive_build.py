@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import socket
+import stat
 import sys
 import tempfile
 
@@ -42,8 +43,13 @@ def archive_build(source, archive_dir, expected_sha, expected_host):
     def verified_destination():
         # Existing content-addressed names must never be replaced, even when
         # corrupt. Do not accept links or non-regular destination objects.
-        if dest.is_symlink() or not dest.is_file():
+        info = dest.lstat()
+        if not stat.S_ISREG(info.st_mode) or getattr(info,'st_file_attributes',0)&0x400:
             raise PreflightError('archive destination is not a regular file')
+        # A hard link to the installed file is not an independent backup:
+        # an in-place launcher write could mutate both names at once.
+        if os.path.samefile(source,dest):
+            raise PreflightError('archive aliases source; independent copy required')
         result = fingerprint(dest)
         if result['sha256'] != expected_sha:
             raise PreflightError('existing archive SHA mismatch; preserve for investigation')
@@ -52,6 +58,8 @@ def archive_build(source, archive_dir, expected_sha, expected_host):
     reused = False
     if os.path.lexists(dest):
         saved = verified_destination()
+        if fingerprint(source) != before:
+            raise PreflightError('source fingerprint changed while verifying existing archive')
         reused = True
     else:
         with tempfile.TemporaryDirectory(prefix='.rift-archive-', dir=root) as stage:
