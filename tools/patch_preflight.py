@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import struct
+import stat
 import sys
 from datetime import datetime, timezone
 
@@ -47,19 +48,47 @@ def inspect_pe(data):
         raise PreflightError('expected AMD64 PE32+ executable')
     table = opt+opt_size
     _range(data, table, count*40)
+    # Bound raw and mapped ranges independently. A virtual-only section has
+    # no file bytes; a raw-backed section must not alias headers or another
+    # section. This is a conservative comparison parser, not a PE loader.
+    header_end = table + count*40
     sections = {}
+    names = set()
+    raw_ranges = []
+    virtual_ranges = []
     for index in range(count):
         s = table+index*40
         name = _range(data, s, 8).split(b'\0', 1)[0].decode('ascii')
-        if not name or name in sections:
-            raise PreflightError('empty or duplicate section name; comparison ambiguous')
+        if not name or not name.isprintable() or name.casefold() in names:
+            raise PreflightError('empty, invalid or duplicate section name; comparison ambiguous')
+        names.add(name.casefold())
         virtual_size, rva, raw_size, raw_offset = struct.unpack('<IIII', _range(data, s+8, 16))
         # Virtual-only sections have no file-backed data to fingerprint.
+        if raw_size:
+            if raw_offset < header_end:
+                raise PreflightError('section raw range overlaps PE headers')
+            raw_ranges.append((raw_offset, raw_offset+raw_size, name))
+        mapped_size = max(virtual_size, raw_size)
+        if mapped_size:
+            if rva == 0 or rva + mapped_size > 0x100000000:
+                raise PreflightError('invalid section virtual range')
+            virtual_ranges.append((rva, rva+mapped_size, name))
         raw = _range(data, raw_offset, raw_size) if raw_size else b''
         sections[name] = dict(rva=rva, virtual_size=virtual_size, raw_size=raw_size,
                               raw_offset=raw_offset, sha256=hashlib.sha256(raw).hexdigest())
+    for label, ranges in (('raw', raw_ranges), ('virtual', virtual_ranges)):
+        ordered = sorted(ranges)
+        for left, right in zip(ordered, ordered[1:]):
+            if left[1] > right[0]:
+                raise PreflightError(f'overlapping section {label} ranges: {left[2]}, {right[2]}')
+    # The trailing data may contain a certificate or other overlay; its
+    # presence or change alone says nothing about machine-code behavior.
+    raw_end = max([header_end] + [end for _, end, _ in raw_ranges])
+    overlay = data[raw_end:]
     return dict(machine='AMD64', format='PE32+', coff_timestamp=timestamp,
-                image_base=_u(data, opt+24, '<Q'), sections=sections)
+                image_base=_u(data, opt+24, '<Q'), sections=sections,
+                parsed_header_sha256=hashlib.sha256(data[:header_end]).hexdigest(),
+                overlay_size=len(overlay), overlay_sha256=hashlib.sha256(overlay).hexdigest())
 
 def _stat_key(s):
     # Windows path.stat and fstat can report different ctime semantics
@@ -75,13 +104,23 @@ def fingerprint(path):
     Whole-file SHA and section SHA values refer to the same bytes.
     """
     path = Path(path)
+    # Refuse nonregular objects before opening (e.g. FIFOs or device files).
+    # Path-to-handle identity checks remain necessary after this precheck.
+    path_before = path.stat()
+    if not stat.S_ISREG(path_before.st_mode):
+        raise PreflightError('input must be a regular file')
     with path.open('rb') as f:
         before = os.fstat(f.fileno())
+        if not stat.S_ISREG(before.st_mode) or _stat_key(path_before) != _stat_key(before):
+            raise PreflightError('input changed while opening')
         if not 0 < before.st_size <= MAX_FILE_BYTES:
             raise PreflightError('input size outside supported bound')
         data = f.read(before.st_size+1)
         after = os.fstat(f.fileno())
-    if len(data) != before.st_size or _stat_key(before) != _stat_key(after) or _stat_key(after) != _stat_key(path.stat()):
+    path_after = path.stat()
+    if (len(data) != before.st_size or _stat_key(before) != _stat_key(after)
+            or _stat_key(after) != _stat_key(path_after)
+            or path_before.st_ctime_ns != path_after.st_ctime_ns):
         raise PreflightError(f'file changed during read: {path}')
     return dict(path=str(path.resolve()), size=len(data), mtime_ns=before.st_mtime_ns,
                 sha256=hashlib.sha256(data).hexdigest(), pe=inspect_pe(data))
@@ -104,12 +143,22 @@ def compare(old, new, expected_sha):
             status='layout_changed'
         else:
             status='unchanged'
-        rows.append(dict(name=name,status=status,baseline=x,candidate=y))
+        # Do not hide layout changes behind the content_changed primary label.
+        both = x is not None and y is not None
+        content_changed = x['sha256'] != y['sha256'] if both else None
+        layout_changed = any(x[k] != y[k] for k in ('rva','virtual_size','raw_size','raw_offset')) if both else None
+        rows.append(dict(name=name,status=status,baseline=x,candidate=y,
+                         content_changed=content_changed,layout_changed=layout_changed))
     same = old['sha256'] == new['sha256']
     return dict(schema_version=1, generated_utc=datetime.now(timezone.utc).isoformat(),
                 status='IDENTICAL_BUILD' if same else 'NEW_BUILD_UNQUALIFIED',
                 baseline_sha_verified=True, baseline=old, candidate=new,
                 section_comparison=rows, exact_build_matches=same,
+                section_counts={label: sum(row['status']==label for row in rows)
+                                for label in ('added','removed','content_changed','layout_changed','unchanged')},
+                image_base_changed=old['pe']['image_base'] != new['pe']['image_base'],
+                parsed_header_changed=old['pe']['parsed_header_sha256'] != new['pe']['parsed_header_sha256'],
+                overlay_changed=old['pe']['overlay_sha256'] != new['pe']['overlay_sha256'],
                 runtime_qualified=False, new_build_native_evidence_qualified=False,
                 next_action='Run exact-build verifier.' if same else 'Retain baseline and separately qualify candidate.',
                 limitations=['No function or RVA matching.', 'No live-process access.',
@@ -130,7 +179,7 @@ def main(argv=None):
     try:
         if args.inspect_only:
             candidate=fingerprint(args.candidate)
-            report=dict(schema_version=1, status='CANDIDATE_ONLY_UNQUALIFIED',
+            report=dict(schema_version=1, generated_utc=datetime.now(timezone.utc).isoformat(), status='CANDIDATE_ONLY_UNQUALIFIED',
                         candidate=candidate, expected_baseline_sha256=expected,
                         baseline_sha_verified=False, exact_build_matches=False,
                         runtime_qualified=False, new_build_native_evidence_qualified=False)
