@@ -1,5 +1,6 @@
 """Synthetic, non-executable PE fixtures; no installed game is required."""
 import hashlib
+import os
 from pathlib import Path
 import socket
 import tempfile
@@ -67,6 +68,25 @@ class ArchiveTests(unittest.TestCase):
     def test_source_directory_refused(self):
         with self.assertRaisesRegex(PreflightError, 'outside'):
             archive_build(self.source, self.source_dir, self.sha, self.host)
+
+    def test_existing_hard_link_to_source_refused(self):
+        os.link(self.source,self.dest)
+        with self.assertRaisesRegex(PreflightError,'aliases source'):
+            self.archive()
+        self.assertTrue(os.path.samefile(self.source,self.dest))
+
+    def test_source_changed_before_reuse_refused(self):
+        self.archive()
+        from patch_preflight import fingerprint
+        def changing_fingerprint(path):
+            result=fingerprint(path)
+            if Path(path)==self.dest:
+                self.source.write_bytes(fixture(b'WRNG'))
+            return result
+        with patch('archive_build.fingerprint',side_effect=changing_fingerprint):
+            with self.assertRaisesRegex(PreflightError,'source fingerprint changed'):
+                self.archive()
+        self.assertEqual(self.dest.read_bytes(),self.data)
 
     def test_failed_publication_cleans_staging(self):
         with patch('archive_build.os.link', side_effect=OSError('unsupported')):
