@@ -57,6 +57,66 @@ class Tests(unittest.TestCase):
         self.assertEqual(r['section_comparison'][0]['status'],'unchanged')
         self.assertFalse(r['exact_build_matches'])
 
+    def test_header_and_overlay_drift_separated(self):
+        data = bytearray(fixture())
+        struct.pack_into('<Q',data,0x98+24,0x180000000)
+        r=self.report(bytes(data)+b'certificate-like-overlay')
+        self.assertTrue(r['image_base_changed'])
+        self.assertTrue(r['parsed_header_changed'])
+        self.assertTrue(r['overlay_changed'])
+        self.assertEqual(r['section_counts']['unchanged'],1)
+        self.assertFalse(r['new_build_native_evidence_qualified'])
+
+    def test_content_and_layout_drift_both_visible(self):
+        row=self.report(fixture(b'EFGH',rva=0x2000))['section_comparison'][0]
+        self.assertEqual(row['status'],'content_changed')
+        self.assertTrue(row['content_changed'])
+        self.assertTrue(row['layout_changed'])
+
+    def test_header_overlap_rejected(self):
+        data=bytearray(fixture())
+        struct.pack_into('<I',data,0x98+0xf0+20,0x80)
+        with self.assertRaisesRegex(PreflightError,'overlaps PE headers'):
+            inspect_pe(data)
+
+    def test_invalid_virtual_range_rejected(self):
+        data=fixture(rva=0xffffffff)
+        with self.assertRaisesRegex(PreflightError,'invalid section virtual range'):
+            inspect_pe(data)
+
+    def test_nonregular_input_rejected(self):
+        with self.assertRaisesRegex(PreflightError,'regular file'):
+            fingerprint(self.tmp.name)
+
+    def test_duplicate_section_name_rejected(self):
+        data=self.two_sections(b'.TEXT',0x2000,516)
+        with self.assertRaisesRegex(PreflightError,'duplicate section name'):
+            inspect_pe(data)
+
+    @staticmethod
+    def two_sections(name,rva,raw_offset):
+        data=bytearray(fixture()+b'EFGH')
+        struct.pack_into('<H',data,0x86,2)
+        sec=0x98+0xf0+40
+        data[sec:sec+len(name)]=name
+        struct.pack_into('<IIII',data,sec+8,4,rva,4,raw_offset)
+        return data
+
+    def test_overlapping_raw_ranges_rejected(self):
+        with self.assertRaisesRegex(PreflightError,'overlapping section raw'):
+            inspect_pe(self.two_sections(b'.data',0x2000,514))
+
+    def test_overlapping_virtual_ranges_rejected(self):
+        with self.assertRaisesRegex(PreflightError,'overlapping section virtual'):
+            inspect_pe(self.two_sections(b'.data',0x1002,516))
+
+    def test_virtual_only_section(self):
+        data=self.two_sections(b'.bss',0x2000,0)
+        struct.pack_into('<I',data,0x98+0xf0+40+16,0)
+        result=inspect_pe(data)
+        self.assertEqual(result['sections']['.bss']['raw_size'],0)
+        self.assertEqual(result['sections']['.bss']['sha256'],hashlib.sha256(b'').hexdigest())
+
     def test_bad_baseline(self):
         self.new.write_bytes(fixture())
         with self.assertRaisesRegex(PreflightError,'baseline SHA mismatch'):
