@@ -6,7 +6,7 @@ const named = x => typeof x === 'string' && x.trim().length > 0;
 // Parse UTC without Date.parse's normalization of impossible calendar dates or
 // silent truncation of sub-millisecond fractions. Integer nanoseconds preserve
 // ordering and interval comparisons for typical high-resolution receipt strings.
-function utcNanoseconds(value) {
+export function utcNanoseconds(value) {
   if (typeof value !== 'string') return null;
   const match = /^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.(\d{1,9}))?Z$/.exec(value);
   if (!match) return null;

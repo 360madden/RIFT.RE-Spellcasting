@@ -103,3 +103,69 @@ test('trial verdict preserves target uncertainty and excluded-event counts', () 
   assert.equal(second.latencyQualified,false);
   assert.equal(second.serverAcknowledgementQualified,false);
 });
+
+const pin = a => ({
+  sessionId:a.sessionId, buildSha256:a.session.buildSha256,
+  processStart:a.session.processStart, playerId:a.session.playerId
+});
+test('independently supplied session pin distinguishes consistency from unpinned structure', () => {
+  const a=fixture();
+  assert.equal(validateCastTrial(a).sessionPinMatched,false);
+  const p=pin(a); p.buildSha256=p.buildSha256.toUpperCase();
+  const result=validateCastTrial(a,{expectedSession:p});
+  assert.equal(result.accepted,true);
+  assert.equal(result.sessionPinMatched,true);
+  assert.equal(result.latencyQualified,false);
+  assert.equal(result.serverAcknowledgementQualified,false);
+});
+test('rejects malformed, incomplete and mismatched session pins', () => {
+  const a=fixture();
+  for (const expectedSession of [null, [], {}, {...pin(a),buildSha256:'bad'}]) {
+    assert.equal(validateCastTrial(a,{expectedSession}).reason,'invalid-expected-session-pin');
+  }
+  for(const [field,value] of [['sessionId','foreign'],['buildSha256','b'.repeat(64)],['processStart','different-start'],['playerId','other']]) {
+    assert.equal(validateCastTrial(a,{expectedSession:{...pin(a),[field]:value}}).reason,'expected-session-pin-mismatch');
+  }
+});
+test('record cannot supply its own independent session pin', () => {
+  const a=fixture(); a.expectedSession=pin(a);
+  assert.equal(validateCastTrial(a).sessionPinMatched,false);
+});
+test('matching game-frame events must fit inside clock sample span', () => {
+  const a=fixture(); a.events[0].time=99;
+  assert.equal(validateCastTrial(a).reason,'event-outside-clock-sample-span');
+  const b=fixture(); b.events[1].time=111;
+  assert.equal(validateCastTrial(b).reason,'event-outside-clock-sample-span');
+  const c=fixture(); c.events[0].time=100; c.events[1].time=110;
+  assert.deepEqual(validateCastTrial(c).clockCoverage,{domain:'game-frame',matchingEventsWithinOuterSpan:true});
+});
+test('foreign events are not included in matching clock coverage', () => {
+  const a=fixture();
+  a.events.push({...a.events[1],id:'foreign',targetId:'other-target',time:120});
+  assert.equal(validateCastTrial(a).accepted,true);
+});
+function utcTrial() {
+  const a=fixture();
+  a.events[0].clockDomain='host-utc'; a.events[1].clockDomain='host-utc';
+  a.events[0].time=Date.parse('2026-11-16T20:00:00.300Z');
+  a.events[1].time=Date.parse('2026-11-16T20:00:01.050Z');
+  return a;
+}
+test('host UTC observations use the original outer UTC bracket', () => {
+  const a=utcTrial();
+  assert.deepEqual(validateCastTrial(a).clockCoverage,{domain:'host-utc',matchingEventsWithinOuterSpan:true});
+  a.events[1].time=Date.parse('2026-11-16T20:00:01.071Z');
+  assert.equal(validateCastTrial(a).reason,'event-outside-clock-sample-span');
+});
+test('UTC event timestamps are compared against sub-millisecond boundaries exactly', () => {
+  const a=utcTrial();
+  a.pairs[0].utcBefore='2026-11-16T20:00:00.000000001Z';
+  a.events[0].time=Date.parse('2026-11-16T20:00:00.000Z');
+  assert.equal(validateCastTrial(a).reason,'event-outside-clock-sample-span');
+});
+test('fractional and unsafe numeric host UTC times are rejected', () => {
+  const a=utcTrial(); a.events[0].time+=0.5;
+  assert.equal(validateCastTrial(a).reason,'invalid-host-utc-event-time');
+  const b=utcTrial(); b.events[1].time=Number.MAX_SAFE_INTEGER+1;
+  assert.equal(validateCastTrial(b).reason,'invalid-host-utc-event-time');
+});
