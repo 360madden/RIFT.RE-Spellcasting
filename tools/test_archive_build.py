@@ -80,7 +80,7 @@ class ArchiveTests(unittest.TestCase):
         from patch_preflight import fingerprint
         def changing_fingerprint(path):
             result=fingerprint(path)
-            if Path(path)==self.dest:
+            if os.path.samefile(path, self.dest):
                 self.source.write_bytes(fixture(b'WRNG'))
             return result
         with patch('archive_build.fingerprint',side_effect=changing_fingerprint):
