@@ -4,7 +4,7 @@ Reverse-engineering research focused on the spellcasting systems of the **RIFT**
 
 ## Project status
 
-Initial repository setup. Research findings, reproducible offline experiments, and implementation milestones will be documented here as they are verified.
+Offline spellcasting evidence research and patch-recovery tooling. The latest LEGION recovery checkpoint is documented in [the November 26 validation report](docs/PATCH-RECOVERY-LEGION-2026-11-26.md). Historical native evidence is build-specific; the current executable is not qualified by that evidence.
 
 ## Working principles
 
@@ -19,16 +19,29 @@ Initial repository setup. Research findings, reproducible offline experiments, a
 On the verified development host (LEGION or AMD-DESKTOP), open PowerShell in `C:\work\RIFT.RE-Spellcasting` and run:
 
 ```powershell
-node tools/verify-evidence.mjs
+node tools/verify-evidence.mjs --index-only
 node --test
 ```
+
+For strict sibling-source verification when the source repositories are present:
+
+```powershell
+node tools/verify-evidence.mjs
+$env:RIFT_EVIDENCE_ROOT = 'C:\work'
+node --test
+Remove-Item Env:RIFT_EVIDENCE_ROOT
+```
+
+Index-only validation checks metadata, not the source bytes. An explicit missing or changed source fails the strict checks.
 
 The source-pinned evidence index is in `docs/evidence-index.json`; the project priorities are in `ROADMAP.md`. The classifier treats actual server acknowledgement and queue behavior as **unknown** unless separately supported. Its tests include synthetic events and two source-hashed **historical report summaries**, not live gameplay or raw event replay. See `docs/SP-004-historical-fixtures.md` for limitations.
 
 ## Patch contingency helper
 
-Run the dependency-free Python 3.10+ helper from the project root. It reads
-files only; it never launches or modifies the client. A changed hash does not
+Run the dependency-free Python 3.10+ helper from the project root. The newer
+reviewed external Update Helper requires Python 3.13+ (`ntpath.isreserved`).
+The tools never launch or modify the client; archive creation writes only to a
+dedicated external directory. A changed hash does not
 qualify old addresses for the new build.
 
 ```powershell
@@ -56,7 +69,10 @@ Exit 0 means a SHA-verified content-addressed copy exists; exit 2 means
 blocked. Existing archives are never overwritten. The helper requires a
 filesystem supporting hard links for atomic publication. Keep archives
 outside Git and never use an archived binary as a replacement for the
-installed client. Archive success does not qualify native addresses.
+installed client. Archive success does not qualify native addresses. Audit the named archive with
+`python -B tools/audit_archives.py --archive-dir PATH --required-sha SHA256`.
+To compare future patches against this particular archived build, pass its
+independently recorded digest with `--expected-sha` to `patch_preflight.py`.
 
 The portable GitHub Actions workflow runs synthetic Python and Node tests
 on Windows and Linux without an installed game or sibling repositories.
@@ -75,8 +91,10 @@ python -B tools/verify_update_manifest.py --manifest 'C:\work\Update Helper\afte
 Use the actual capture filename; the example does not imply that a capture
 already exists. Exit 3 means the executable identity is bound to a verified
 manifest but native semantics remain unqualified. Exit 2 means blocked.
-The external validator is pinned by SHA-256 and must be reviewed again if
-updated. See [integration evidence](docs/PATCH-UPDATE-HELPER-INTEGRATION.md).
+The two reviewed validator versions are pinned by SHA-256; further versions
+require explicit review. Use `--expected-manifest-sha SHA256` for an
+independently recorded manifest digest. See [integration evidence](docs/PATCH-UPDATE-HELPER-INTEGRATION.md)
+and the [November 26 actual-capture validation](docs/PATCH-RECOVERY-LEGION-2026-11-26.md).
 
 Historical native PE tests are **explicitly opt-in**. Without RIFT_EXE_PATH,
 Node runs portable tests and reports the historical cases as skipped. An

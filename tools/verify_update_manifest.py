@@ -19,7 +19,9 @@ from patch_preflight import BASELINE_SHA256, PreflightError, fingerprint
 
 # Pin the reviewed external utility. An updated utility requires explicit
 # review and a new pin; never silently execute an arbitrary sibling script.
-HELPER_SHA256 = '27a1b14561f6efc2b9d74e2e509712c06ca277eb54a35230a9b08ef95a49498f'
+HELPER_SHA256 = 'da2d0303061330b662a9c4e642a3ec5283869a2926c3c44a1f567b54ab7ec849'
+# Retain the previously reviewed validator for older host checkouts.
+LEGACY_HELPER_SHA256 = '27a1b14561f6efc2b9d74e2e509712c06ca277eb54a35230a9b08ef95a49498f'
 DEFAULT_HELPER = Path(__file__).resolve().parents[2] / 'Update Helper' / 'update_helper.py'
 MAX_MANIFEST_BYTES = 32 * 1024 * 1024
 MAX_HELPER_BYTES = 1024 * 1024
@@ -57,7 +59,7 @@ def parse_object(data):
 def sha(data):
     return hashlib.sha256(data).hexdigest()
 
-def bind(doc, verified, manifest_sha, candidate, expected_host, expected_phase):
+def bind(doc, verified, manifest_sha, candidate, expected_host, expected_phase, validator_sha=None):
     """Bind the validator receipt to the exact manifest and PE fingerprint.
 
     The external validator checks manifest schema, completeness and totals.
@@ -86,23 +88,26 @@ def bind(doc, verified, manifest_sha, candidate, expected_host, expected_phase):
         raise PreflightError('candidate identity differs from captured executable')
     return dict(schema_version=1,status='MANIFEST_BOUND_UNQUALIFIED',
                 host=expected_host,phase=expected_phase,manifest_sha256=manifest_sha,
-                validator_sha256=HELPER_SHA256,candidate=candidate,
+                validator_sha256=validator_sha or HELPER_SHA256,candidate=candidate,
                 historical_build_hash_matches=candidate['sha256']==BASELINE_SHA256,
                 capture_manifest_bound=True,baseline_sha_verified=False,
                 runtime_qualified=False,new_build_native_evidence_qualified=False)
 
-def verify_and_bind(helper, manifest, candidate_path, expected_host, expected_phase):
+def verify_and_bind(helper, manifest, candidate_path, expected_host, expected_phase, expected_manifest_sha=None):
     # Host verification is independent of the supplied manifest.
     if socket.gethostname().upper()!=expected_host:
         raise PreflightError('wrong executing host')
     helper=Path(helper).resolve(strict=True)
     manifest=Path(manifest).resolve(strict=True)
     helper_data=read_bounded(helper, MAX_HELPER_BYTES, 'helper')
-    if sha(helper_data)!=HELPER_SHA256:
+    validator_sha=sha(helper_data)
+    if validator_sha not in (HELPER_SHA256, LEGACY_HELPER_SHA256):
         raise PreflightError('Update Helper source SHA mismatch; review utility before use')
     data=read_manifest(manifest)
     doc=parse_object(data)
     digest=sha(data)
+    if expected_manifest_sha is not None and digest != expected_manifest_sha:
+        raise PreflightError('independent manifest SHA mismatch')
     # Verify the exact captured bytes, not a path that may be rewritten
     # after hashing. The verify subcommand needs no sibling files and
     # does not write output. Originals are checked again afterward.
@@ -111,14 +116,18 @@ def verify_and_bind(helper, manifest, candidate_path, expected_host, expected_ph
         snapshot_manifest=Path(stage)/'manifest.json'
         snapshot_helper.write_bytes(helper_data)
         snapshot_manifest.write_bytes(data)
-        proc=subprocess.run([sys.executable,'-I','-B',str(snapshot_helper),'verify',str(snapshot_manifest)],
-                            capture_output=True,text=True,encoding='utf-8',timeout=30,check=False)
+        args=[sys.executable,'-I','-B',str(snapshot_helper),'verify',str(snapshot_manifest)]
+        # The newer reviewed validator supports an independent manifest pin.
+        # The legacy verifier still returns its digest, checked in bind().
+        if validator_sha == HELPER_SHA256:
+            args.extend(['--expected-sha256',digest])
+        proc=subprocess.run(args,capture_output=True,text=True,encoding='utf-8',timeout=30,check=False)
     if proc.returncode!=0:
         raise PreflightError('Update Helper rejected the manifest')
-    if sha(read_bounded(helper, MAX_HELPER_BYTES, 'helper'))!=HELPER_SHA256 or sha(read_manifest(manifest))!=digest:
+    if sha(read_bounded(helper, MAX_HELPER_BYTES, 'helper'))!=validator_sha or sha(read_manifest(manifest))!=digest:
         raise PreflightError('helper or manifest changed during verification')
     verified=parse_object(proc.stdout)
-    return bind(doc,verified,digest,fingerprint(candidate_path),expected_host,expected_phase)
+    return bind(doc,verified,digest,fingerprint(candidate_path),expected_host,expected_phase,validator_sha)
 
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
@@ -127,9 +136,10 @@ def main(argv=None):
     parser.add_argument('--candidate',type=Path,required=True)
     parser.add_argument('--expected-host',required=True)
     parser.add_argument('--phase',choices=['before','after'],required=True)
+    parser.add_argument('--expected-manifest-sha',help='Independently recorded manifest SHA-256')
     a=parser.parse_args(argv)
     try:
-        report=verify_and_bind(a.helper,a.manifest,a.candidate,a.expected_host.upper(),a.phase)
+        report=verify_and_bind(a.helper,a.manifest,a.candidate,a.expected_host.upper(),a.phase,a.expected_manifest_sha)
     except (OSError,ValueError,TypeError,KeyError,subprocess.TimeoutExpired) as exc:
         print(json.dumps(dict(status='BLOCKED',error=str(exc),runtime_qualified=False)))
         return 2

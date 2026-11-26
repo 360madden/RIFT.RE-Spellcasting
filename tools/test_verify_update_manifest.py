@@ -91,6 +91,7 @@ class BindingTests(unittest.TestCase):
             self.assertEqual(Path(args[3]).read_bytes(),payload)
             self.assertEqual(Path(args[5]).read_bytes(),data)
             self.assertEqual(args[4],'verify')
+            self.assertEqual(args[6:],['--expected-sha256',hashlib.sha256(data).hexdigest()])
             return subprocess.CompletedProcess(args,0,json.dumps(receipt),'')
         with patch('verify_update_manifest.HELPER_SHA256',hashlib.sha256(payload).hexdigest()):
             with patch('verify_update_manifest.subprocess.run',side_effect=simulated_run):
@@ -102,6 +103,37 @@ class BindingTests(unittest.TestCase):
             with patch('verify_update_manifest.subprocess.run',side_effect=changed_run):
                 with self.assertRaisesRegex(PreflightError,'changed during verification'):
                     verify_and_bind(helper,manifest,self.path,self.host,'after')
+
+    def test_independent_manifest_pin_mismatch_blocks_execution(self):
+        helper=self.root/'mock_helper.py'
+        manifest=self.root/'manifest.json'
+        payload=b'# reviewed mock'
+        helper.write_bytes(payload)
+        manifest.write_text(json.dumps(self.doc))
+        with patch('verify_update_manifest.HELPER_SHA256',hashlib.sha256(payload).hexdigest()):
+            with patch('verify_update_manifest.subprocess.run') as run:
+                with self.assertRaisesRegex(PreflightError,'independent manifest SHA mismatch'):
+                    verify_and_bind(helper,manifest,self.path,self.host,'after','0'*64)
+                run.assert_not_called()
+
+    def test_legacy_reviewed_helper_still_supported(self):
+        helper=self.root/'mock_legacy.py'
+        manifest=self.root/'manifest.json'
+        payload=b'# reviewed legacy mock'
+        helper.write_bytes(payload)
+        data=json.dumps(self.doc).encode()
+        manifest.write_bytes(data)
+        pin=hashlib.sha256(payload).hexdigest()
+        receipt=dict(self.receipt,manifest_sha256=hashlib.sha256(data).hexdigest())
+        def simulated_run(args,**kwargs):
+            self.assertEqual(len(args),6)
+            self.assertEqual(args[4],'verify')
+            return subprocess.CompletedProcess(args,0,json.dumps(receipt),'')
+        with patch('verify_update_manifest.LEGACY_HELPER_SHA256',pin):
+            with patch('verify_update_manifest.subprocess.run',side_effect=simulated_run):
+                result=verify_and_bind(helper,manifest,self.path,self.host,'after',receipt['manifest_sha256'])
+                self.assertEqual(result['validator_sha256'],pin)
+                self.assertTrue(result['capture_manifest_bound'])
 
     def test_wrong_helper_blocked_without_execution(self):
         helper=self.root/'other.py'
