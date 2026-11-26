@@ -101,6 +101,37 @@ Only the integrated base may be marked complete. Record external-evidence
 skips rather than treating them as passes. No new GitHub workflow permission,
 API credential, or paid service is introduced by this scaffold.
 
+## Enforced CI integration policy (November 27, 2026)
+
+The repository's main branch is protected. GitHub requires both
+`portable (windows-latest)` and `portable (ubuntu-latest)` from the
+GitHub Actions app (ID 15368), with strict up-to-date branch checks.
+Pull requests are required, including for administrators; force pushes
+and branch deletion are prohibited, and review conversations must be
+resolved. The minimum human approval count is zero for this single
+maintainer workflow. Independent review remains a development requirement,
+not a mandatory second GitHub account.
+
+Use a separate task branch, open a PR, and check the actual head and CI
+conclusions before merging. Do not bypass protection. Use a merge commit
+when preserving an exact task commit for the queue's ancestry checks.
+
+The existing Actions matrix discovers `tools/test_ci_integration.py`
+through Python unittest discovery. It runs the portable Node TAP scope
+reconciler and checks the tracked deliverables of completed queue tasks.
+Full-history checkouts also verify the recorded completion commit ancestry.
+The current Actions checkout is shallow, so its ancestry check is
+explicitly deferred; the coordinator checks ancestry in a full checkout
+before integration. The Node suite is run twice under the current workflow
+(one invocation inside the integration check and one existing workflow
+step); this is intentional until the workflow can be consolidated.
+
+The current OAuth credential previously lacked workflow-file write scope.
+No workflow file, authentication scope, secret, or credential has been
+changed to bypass that limitation. The remaining upgrade is to consolidate
+the matrix around the unified portable runner, use full history, and
+publish explicit result artifacts when workflow edit permission is available.
+
 ## Compact handoff
 
 Return these fields for every actual task:
