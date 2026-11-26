@@ -99,6 +99,11 @@ class ReplayTests(unittest.TestCase):
     def test_all_fixture_plans_replay_and_optimize(self):
         for path in sorted(FIXTURES.glob('dps-*.json')):
             with self.subTest(path=path.name):
+                # Combat-event records are a separate, explicitly validated
+                # fixture type. Unknown kinds still fail load_profile.
+                raw = json.loads(path.read_text(encoding='utf-8'))
+                if isinstance(raw, dict) and raw.get('model_kind') == 'synthetic-combat-events':
+                    continue
                 p = load_profile(path)
                 result = evaluate(p)
                 self.assertTrue(result['policies']['lookahead']['search_complete'])
