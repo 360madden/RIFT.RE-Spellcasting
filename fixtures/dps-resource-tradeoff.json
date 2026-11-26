@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "model_kind": "synthetic-simulation",
+  "name": "Resource tradeoff",
+  "assumptions": "Hypothetical damage and resource numbers; no regeneration. Demonstrates opportunity cost.",
+  "horizon_ms": 2000,
+  "resource": 100,
+  "resource_max": 100,
+  "abilities": [
+    {
+      "id": "large",
+      "damage": 150,
+      "cost": 100,
+      "cooldown_ms": 10000,
+      "lockout_ms": 1000
+    },
+    {
+      "id": "small",
+      "damage": 95,
+      "cost": 50,
+      "cooldown_ms": 0,
+      "lockout_ms": 1000
+    }
+  ]
+}

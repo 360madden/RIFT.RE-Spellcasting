@@ -45,16 +45,9 @@ def integer(value, low, high, name):
     return value
 
 
-def optimize(abilities, *, horizon_ms, resource, resource_max,
-             regen_per_second=0, initial_lockout_ms=0, state_budget=20000):
-    """Evaluate an explicit finite-horizon damage model.
-
-    Each candidate can be scheduled at its earliest feasible start, including
-    waiting for its cooldown or sufficient resource. Search compares sequences
-    rather than only damage-per-second of the next action. Cooldowns start at
-    action start in this model; lockout covers cast/GCD as supplied by caller.
-    This simplified model has no DoT, proc, movement, or stochastic mechanics.
-    """
+def validate_model(abilities, *, horizon_ms, resource, resource_max,
+                   regen_per_second=0, initial_lockout_ms=0, state_budget=20000):
+    """Validate and canonicalize model parameters without doing a search."""
     horizon = integer(horizon_ms, 100, 30000, "horizon_ms")
     capacity = integer(resource_max, 1, 100000, "resource_max")
     initial = integer(resource, 0, capacity, "resource")
@@ -66,7 +59,7 @@ def optimize(abilities, *, horizon_ms, resource, resource_max,
         raise ValueError("one to 32 modeled abilities required")
     seen = set()
     for a in abilities:
-        if not isinstance(a, Ability) or not isinstance(a.id, str) or not a.id.strip():
+        if not isinstance(a, Ability) or not isinstance(a.id, str) or not a.id.strip() or len(a.id) > 128:
             raise ValueError("each ability must have a nonblank ID")
         if a.id in seen:
             raise ValueError("duplicate ability ID")
@@ -78,6 +71,23 @@ def optimize(abilities, *, horizon_ms, resource, resource_max,
         integer(a.ready_at_ms, 0, 3600000, "ready_at_ms")
     # Stable ordering makes equal-scoring plans reproducible across input order.
     abilities = tuple(sorted(abilities, key=lambda a: a.id))
+    return abilities, horizon, initial, capacity, regen, lockout, budget
+
+
+def optimize(abilities, *, horizon_ms, resource, resource_max,
+             regen_per_second=0, initial_lockout_ms=0, state_budget=20000):
+    """Evaluate an explicit finite-horizon damage model.
+
+    Each candidate can be scheduled at its earliest feasible start, including
+    waiting for its cooldown or sufficient resource. Search compares sequences
+    rather than only damage-per-second of the next action. Cooldowns start at
+    action start in this model; lockout covers cast/GCD as supplied by caller.
+    This simplified model has no DoT, proc, movement, or stochastic mechanics.
+    """
+    abilities, horizon, initial, capacity, regen, lockout, budget = validate_model(
+        abilities, horizon_ms=horizon_ms, resource=resource, resource_max=resource_max,
+        regen_per_second=regen_per_second, initial_lockout_ms=initial_lockout_ms,
+        state_budget=state_budget)
     cap = capacity * 1000
     expanded = 0
     truncated = False

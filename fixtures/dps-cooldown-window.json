@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "model_kind": "synthetic-simulation",
+  "name": "Cooldown window",
+  "assumptions": "Hypothetical burst ability becomes available after 500 ms; immediate filler can occupy the remaining window.",
+  "horizon_ms": 1500,
+  "resource": 10,
+  "resource_max": 10,
+  "abilities": [
+    {
+      "id": "filler",
+      "damage": 10,
+      "cost": 0,
+      "cooldown_ms": 0,
+      "lockout_ms": 1000
+    },
+    {
+      "id": "burst",
+      "damage": 100,
+      "cost": 0,
+      "cooldown_ms": 10000,
+      "lockout_ms": 1000,
+      "ready_at_ms": 500
+    }
+  ]
+}

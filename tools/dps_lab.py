@@ -1,0 +1,187 @@
+"""Offline synthetic encounter evaluation and independent plan replay.
+
+This module has no game-state reader, input backend or live scheduler.
+Time is modeled time, never wall-clock latency.
+"""
+from __future__ import annotations
+
+import argparse
+from dataclasses import asdict, dataclass
+from fractions import Fraction
+import json
+from time import perf_counter_ns
+
+from dps_planner import Step, optimize, validate_model
+from dps_profile import Scenario, load_profile
+
+
+@dataclass(frozen=True)
+class Metrics:
+    damage: int
+    actions: int
+    occupied_ms: int
+    idle_ms: int
+    final_resource_milli: int
+    wasted_resource_milli: int
+
+
+def replay(scenario: Scenario, steps):
+    """Independently check each modeled action and account for the full horizon.
+
+    This intentionally does not call the optimizer or share its transition
+    function. A proposed sequence must satisfy the encounter's model.
+    """
+    abilities, horizon, initial, capacity, regen, lockout, _ = validate_model(
+        scenario.abilities, **scenario.model_kwargs())
+    by_id = {a.id: a for a in abilities}
+    ready = {a.id: a.ready_at_ms for a in abilities}
+    cap = capacity * 1000
+    amount = initial * 1000
+    wasted = damage = occupied = 0
+    now = 0
+
+    def advance(end):
+        nonlocal now, amount, wasted
+        produced = amount + regen * (end - now)
+        wasted += max(0, produced - cap)
+        amount = min(cap, produced)
+        now = end
+
+    # An initial global lockout is modeled as already occupied time.
+    advance(lockout)
+    occupied += lockout
+    steps = tuple(steps)
+    if len(steps) > horizon // 100:
+        raise ValueError('too many actions for horizon')
+    for step in steps:
+        if not isinstance(step, Step) or step.ability_id not in by_id:
+            raise ValueError('unknown or malformed step')
+        a = by_id[step.ability_id]
+        if any(type(v) is not int for v in (step.start_ms, step.end_ms, step.damage)):
+            raise ValueError('step fields must be integer')
+        if (step.start_ms < now or step.start_ms < ready[a.id] or
+                step.end_ms != step.start_ms + a.lockout_ms or
+                step.end_ms > horizon or step.damage != a.damage):
+            raise ValueError('step violates time, cooldown or damage model')
+        advance(step.start_ms)
+        if amount < a.cost * 1000:
+            raise ValueError('step exceeds available resource')
+        amount -= a.cost * 1000
+        ready[a.id] = step.start_ms + a.cooldown_ms
+        advance(step.end_ms)
+        occupied += a.lockout_ms
+        damage += step.damage
+    advance(horizon)
+    return Metrics(damage, len(steps), occupied, horizon - occupied, amount, wasted)
+
+
+def baseline(scenario: Scenario, policy):
+    """Simple deterministic comparison policies in the same synthetic model.
+
+    Both act at the earliest feasible instant and rank currently feasible
+    actions only. They do not plan future sequences. Exact rational arithmetic
+    avoids floating-point tie surprises in the efficiency policy.
+    """
+    if policy not in ('greedy-damage', 'greedy-efficiency'):
+        raise ValueError('unknown baseline')
+    abilities, horizon, initial, capacity, regen, now, _ = validate_model(
+        scenario.abilities, **scenario.model_kwargs())
+    cap = capacity * 1000
+    amount = min(cap, initial * 1000 + regen * now)
+    ready = {a.id: a.ready_at_ms for a in abilities}
+    steps = []
+    while now < horizon:
+        choices = []
+        for a in abilities:
+            if a.damage <= 0:
+                continue
+            start = max(now, ready[a.id])
+            available = min(cap, amount + regen * (start - now))
+            need = a.cost * 1000 - available
+            if need > 0:
+                if not regen:
+                    continue
+                start += (need + regen - 1) // regen
+            end = start + a.lockout_ms
+            if end <= horizon:
+                score = a.damage if policy == 'greedy-damage' else Fraction(a.damage, a.lockout_ms)
+                choices.append((start, -score, a.id, a))
+        if not choices:
+            break
+        start, _, _, a = min(choices)
+        end = start + a.lockout_ms
+        amount = min(cap, amount + regen * (start - now)) - a.cost * 1000
+        amount = min(cap, amount + regen * a.lockout_ms)
+        ready[a.id] = start + a.cooldown_ms
+        steps.append(Step(a.id, start, end, a.damage))
+        now = end
+    return tuple(steps)
+
+
+def evaluate(scenario: Scenario):
+    """Return comparable results, including replay verification and search status."""
+    rows = {}
+    for policy in ('greedy-damage', 'greedy-efficiency', 'lookahead'):
+        start = perf_counter_ns()
+        if policy == 'lookahead':
+            plan = optimize(scenario.abilities, **scenario.model_kwargs())
+            steps = plan.steps
+            expected_damage = plan.damage
+            search = {'explored_states': plan.explored_states,
+                      'search_complete': plan.search_complete}
+        else:
+            steps = baseline(scenario, policy)
+            expected_damage = None
+            search = {}
+        elapsed = (perf_counter_ns() - start) / 1000000
+        metrics = replay(scenario, steps)
+        if expected_damage is not None and metrics.damage != expected_damage:
+            raise ValueError('planner and independent replay damage disagree')
+        rows[policy] = {
+            **asdict(metrics), **search,
+            'modeled_dps': metrics.damage * 1000 / scenario.horizon_ms,
+            'evaluation_ms': round(elapsed, 3),
+            'steps': [asdict(step) for step in steps],
+        }
+    best_baseline = max(rows[p]['damage'] for p in ('greedy-damage', 'greedy-efficiency'))
+    predicted = rows['lookahead']['damage']
+    # Retain the strongest independently replayed candidate. An incomplete
+    # search is allowed to lose; the lab never hides a better baseline.
+    selected = max(rows, key=lambda p: (rows[p]['damage'], -rows[p]['actions'],
+                                       p == 'lookahead'))
+    if rows['lookahead']['search_complete'] and predicted < best_baseline:
+        raise ValueError('complete search lost to a feasible baseline')
+    # If a budget-limited search loses to a baseline, report it honestly.
+    # Never label an incomplete search as an optimal solution.
+    return {
+        'schema_version': 1,
+        'model_kind': 'synthetic-simulation',
+        'name': scenario.name,
+        'assumptions': scenario.assumptions,
+        'horizon_ms': scenario.horizon_ms,
+        'policies': rows,
+        'best_evaluated_policy': selected,
+        'best_evaluated_damage': rows[selected]['damage'],
+        'optimal_within_model': rows['lookahead']['search_complete'],
+        'lookahead_vs_best_baseline_damage': predicted - best_baseline,
+        'lookahead_vs_best_baseline_percent':
+            (predicted - best_baseline) * 100 / best_baseline if best_baseline else None,
+        'game_action_sent': False,
+        'runtime_qualified': False,
+    }
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('profile', help='Local synthetic encounter JSON')
+    args = parser.parse_args(argv)
+    try:
+        report = evaluate(load_profile(args.profile))
+    except (OSError, ValueError) as error:
+        parser.exit(2, 'DPS simulation rejected: ' + str(error) + '\n')
+    print(json.dumps(report, indent=2, allow_nan=False))
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

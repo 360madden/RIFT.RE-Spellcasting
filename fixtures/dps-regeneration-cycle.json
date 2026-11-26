@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "model_kind": "synthetic-simulation",
+  "name": "Regeneration cycle",
+  "assumptions": "Hypothetical single resource regenerated continuously at 10 units per modeled second.",
+  "horizon_ms": 6000,
+  "resource": 10,
+  "resource_max": 20,
+  "regen_per_second": 10,
+  "abilities": [
+    {
+      "id": "heavy",
+      "damage": 75,
+      "cost": 20,
+      "cooldown_ms": 3000,
+      "lockout_ms": 1500
+    },
+    {
+      "id": "light",
+      "damage": 24,
+      "cost": 6,
+      "cooldown_ms": 0,
+      "lockout_ms": 750
+    },
+    {
+      "id": "free",
+      "damage": 8,
+      "cost": 0,
+      "cooldown_ms": 0,
+      "lockout_ms": 500
+    }
+  ]
+}

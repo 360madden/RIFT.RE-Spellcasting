@@ -4,6 +4,23 @@ Reverse-engineering research focused on the spellcasting systems of the **RIFT**
 
 ## Project status
 
+The current product direction is a **local DPS planning and evaluation engine**.
+The initial implementation is an offline synthetic encounter simulator, not
+a live game controller. Existing RRE/RR2 evidence and observation systems
+remain independent sources of record.
+
+Run the local benchmark lab from this checkout:
+
+```powershell
+python -B tools/dps_lab.py fixtures/dps-resource-tradeoff.json
+python -B -m unittest discover -s tools -p 'test_dps*.py' -v
+```
+
+The benchmark independently replays candidate action sequences and compares
+modeled damage, resource waste, idle time and bounded search quality.
+See [the DPS profile and benchmark lab](docs/DPS-002-profile-benchmark-lab.md).
+Its modeled damage and performance figures are not measured in-game DPS.
+
 Offline spellcasting evidence research and patch-recovery tooling. The latest LEGION recovery checkpoint is documented in [the November 26 validation report](docs/PATCH-RECOVERY-LEGION-2026-11-26.md). Historical native evidence is build-specific; the current executable is not qualified by that evidence.
 
 ## Working principles
