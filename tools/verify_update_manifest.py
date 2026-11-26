@@ -8,6 +8,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
+import os
 from pathlib import Path
 import socket
 import stat
@@ -15,7 +17,7 @@ import tempfile
 import subprocess
 import sys
 
-from patch_preflight import BASELINE_SHA256, PreflightError, fingerprint
+from patch_preflight import BASELINE_SHA256, PreflightError, fingerprint, _stat_key
 
 # Pin the reviewed external utility. An updated utility requires explicit
 # review and a new pin; never silently execute an arbitrary sibling script.
@@ -33,9 +35,17 @@ def read_bounded(path, limit, label):
     if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
         raise PreflightError(f'{label} is not a bounded regular file')
     with path.open('rb') as f:
+        before = os.fstat(f.fileno())
+        if not stat.S_ISREG(before.st_mode) or _stat_key(info) != _stat_key(before):
+            raise PreflightError(f'{label} changed while opening')
         data = f.read(limit+1)
+        after = os.fstat(f.fileno())
     if len(data) > limit:
         raise PreflightError(f'{label} exceeds size bound')
+    final = path.stat()
+    if (len(data) != before.st_size or _stat_key(before) != _stat_key(after)
+            or _stat_key(after) != _stat_key(final) or info.st_ctime_ns != final.st_ctime_ns):
+        raise PreflightError(f'{label} changed during read')
     return data
 
 def read_manifest(path):
@@ -51,7 +61,15 @@ def parse_object(data):
                 raise PreflightError(f'duplicate JSON key: {key}')
             obj[key] = value
         return obj
-    doc = json.loads(data, object_pairs_hook=unique)
+    def reject_constant(value):
+        raise PreflightError(f'nonfinite JSON value: {value}')
+    def finite_float(value):
+        number = float(value)
+        if not math.isfinite(number):
+            reject_constant(value)
+        return number
+    doc = json.loads(data, object_pairs_hook=unique,
+                     parse_constant=reject_constant, parse_float=finite_float)
     if not isinstance(doc, dict):
         raise PreflightError('expected JSON object')
     return doc
@@ -74,17 +92,22 @@ def bind(doc, verified, manifest_sha, candidate, expected_host, expected_phase, 
     if verified.get('phase') != expected_phase or doc.get('phase') != expected_phase:
         raise PreflightError('manifest phase mismatch')
     for key in ('file_count', 'bytes'):
-        if type(doc.get(key)) is not int or doc[key] < 0 or verified.get(key) != doc[key]:
+        if (type(doc.get(key)) is not int or doc[key] < 0
+                or type(verified.get(key)) is not int or verified[key] != doc[key]):
             raise PreflightError(f'manifest validator {key} mismatch')
     if Path(candidate['path']).resolve() != (Path(doc['root'])/'rift_x64.exe').resolve():
         raise PreflightError('candidate path is outside the recorded install identity')
-    rows=[r for r in doc['files'] if r['path'].casefold()=='rift_x64.exe']
+    files = doc.get('files')
+    if not isinstance(files, list) or any(
+            not isinstance(r, dict) or not isinstance(r.get('path'), str) for r in files):
+        raise PreflightError('invalid manifest file records')
+    rows=[r for r in files if r['path'].casefold()=='rift_x64.exe']
     if len(rows)!=1:
         raise PreflightError('manifest executable record missing or ambiguous')
     row=rows[0]
     if (row['sha256'] != candidate['sha256'] or
         verified.get('exe_sha256') != candidate['sha256'] or
-        row['size'] != candidate['size']):
+        type(row.get('size')) is not int or row['size'] != candidate['size']):
         raise PreflightError('candidate identity differs from captured executable')
     return dict(schema_version=1,status='MANIFEST_BOUND_UNQUALIFIED',
                 host=expected_host,phase=expected_phase,manifest_sha256=manifest_sha,
@@ -127,7 +150,12 @@ def verify_and_bind(helper, manifest, candidate_path, expected_host, expected_ph
     if sha(read_bounded(helper, MAX_HELPER_BYTES, 'helper'))!=validator_sha or sha(read_manifest(manifest))!=digest:
         raise PreflightError('helper or manifest changed during verification')
     verified=parse_object(proc.stdout)
-    return bind(doc,verified,digest,fingerprint(candidate_path),expected_host,expected_phase,validator_sha)
+    result=bind(doc,verified,digest,fingerprint(candidate_path),expected_host,expected_phase,validator_sha)
+    # The PE read occurs after the verifier; detect input drift across that
+    # final read too, not just while the subprocess was running.
+    if sha(read_bounded(helper, MAX_HELPER_BYTES, 'helper'))!=validator_sha or sha(read_manifest(manifest))!=digest:
+        raise PreflightError('helper or manifest changed during candidate binding')
+    return result
 
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)

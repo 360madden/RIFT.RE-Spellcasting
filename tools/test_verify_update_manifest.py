@@ -69,6 +69,31 @@ class BindingTests(unittest.TestCase):
         with self.assertRaisesRegex(PreflightError,'duplicate JSON key'):
             parse_object('{"host":"LEGION","host":"OTHER"}')
 
+    def test_nonfinite_json_values_refused(self):
+        for value in ('NaN','Infinity','-Infinity','1e999'):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(PreflightError,'nonfinite JSON'):
+                    parse_object('{"value":'+value+'}')
+
+    def test_receipt_boolean_and_float_totals_refused(self):
+        for value in (True,1.0):
+            with self.subTest(value=value):
+                self.receipt['file_count']=value
+                with self.assertRaisesRegex(PreflightError,'validator file_count mismatch'):
+                    self.result()
+
+    def test_malformed_file_records_refused(self):
+        for rows in (None,[None],[{'path':1}]):
+            with self.subTest(rows=rows):
+                self.doc['files']=rows
+                with self.assertRaisesRegex(PreflightError,'invalid manifest file records'):
+                    self.result()
+
+    def test_executable_size_float_refused(self):
+        self.doc['files'][0]['size']=float(self.candidate['size'])
+        with self.assertRaisesRegex(PreflightError,'candidate identity'):
+            self.result()
+
     def test_nonobject_receipt_refused(self):
         with self.assertRaisesRegex(PreflightError,'expected JSON object'):
             parse_object('[]')
@@ -103,6 +128,24 @@ class BindingTests(unittest.TestCase):
             with patch('verify_update_manifest.subprocess.run',side_effect=changed_run):
                 with self.assertRaisesRegex(PreflightError,'changed during verification'):
                     verify_and_bind(helper,manifest,self.path,self.host,'after')
+
+    def test_manifest_drift_during_candidate_binding(self):
+        helper=self.root/'mock_helper.py'
+        manifest=self.root/'manifest.json'
+        payload=b'# reviewed synthetic helper'
+        helper.write_bytes(payload)
+        data=json.dumps(self.doc).encode()
+        manifest.write_bytes(data)
+        receipt=dict(self.receipt,manifest_sha256=hashlib.sha256(data).hexdigest())
+        def changing_fingerprint(path):
+            result=fingerprint(path)
+            manifest.write_bytes(b'changed')
+            return result
+        with patch('verify_update_manifest.HELPER_SHA256',hashlib.sha256(payload).hexdigest()):
+            with patch('verify_update_manifest.subprocess.run',return_value=subprocess.CompletedProcess([],0,json.dumps(receipt),'')):
+                with patch('verify_update_manifest.fingerprint',side_effect=changing_fingerprint):
+                    with self.assertRaisesRegex(PreflightError,'changed during candidate binding'):
+                        verify_and_bind(helper,manifest,self.path,self.host,'after')
 
     def test_independent_manifest_pin_mismatch_blocks_execution(self):
         helper=self.root/'mock_helper.py'

@@ -106,6 +106,18 @@ def cycle_recovery(candidate, archive_dir, root, before, prefix, before_sha, exp
         raise PreflightError('installed executable differs from verified cycle')
     if report['status']!='BLOCKED' and report.get('manifest_binding',{}).get('manifest_sha256')!=receipt['manifest_sha256']['after-b']:
         raise PreflightError('recovery manifest receipt mismatch')
+    # The recovery report rereads the candidate and after-b manifest. Recheck
+    # every original cycle input and both reviewed scripts after that work;
+    # otherwise drift in before, after-a or the saved comparisons could go
+    # unreported between the two independently successful checks.
+    paths={'before':Path(before)}
+    paths.update({role:Path(root)/(prefix+'-'+role+'.json') for role in ROLES[1:]})
+    for role,path in paths.items():
+        if digest(read_bounded(path,MAX_MANIFEST_BYTES,role))!=receipt['manifest_sha256'][role]:
+            raise PreflightError('cycle input changed during recovery: '+role)
+    for name,pin in (('update_helper.py',HELPER_SHA256),('verify_cycle.py',CYCLE_SHA256)):
+        if digest(read_bounded(Path(root)/name,MAX_HELPER_BYTES,name))!=pin:
+            raise PreflightError('cycle dependency changed during recovery: '+name)
     report['stored_cycle']=receipt
     report['stored_cycle_verified']=True
     report['runtime_qualified']=False

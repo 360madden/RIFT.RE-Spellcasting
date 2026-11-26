@@ -162,6 +162,39 @@ class CycleTests(unittest.TestCase):
         self.assertFalse(r['runtime_qualified'])
         self.assertFalse(r['new_build_native_evidence_qualified'])
 
+    def test_cycle_input_drift_during_recovery(self):
+        for role in ROLES:
+            with self.subTest(role=role):
+                path=self.paths[role]
+                original=path.read_bytes()
+                def mutate(*args):
+                    path.write_bytes(b'changed')
+                    return dict(status='REVIEW_READY_UNQUALIFIED',candidate={'sha256':'b'*64},
+                                manifest_binding={'manifest_sha256':self.hashes['after-b']})
+                try:
+                    with patch('verify_recovery_cycle.recovery_report',side_effect=mutate):
+                        with self.assertRaisesRegex(PreflightError,'cycle input changed during recovery'):
+                            cycle_recovery(self.root/'candidate.exe',self.root,self.root,self.before,
+                                           self.prefix,self.hashes['before'],self.host)
+                finally:
+                    path.write_bytes(original)
+
+    def test_cycle_dependency_drift_during_recovery(self):
+        for name,original in self.code.items():
+            with self.subTest(name=name):
+                path=self.root/name
+                def mutate(*args):
+                    path.write_bytes(b'changed')
+                    return dict(status='REVIEW_READY_UNQUALIFIED',candidate={'sha256':'b'*64},
+                                manifest_binding={'manifest_sha256':self.hashes['after-b']})
+                try:
+                    with patch('verify_recovery_cycle.recovery_report',side_effect=mutate):
+                        with self.assertRaisesRegex(PreflightError,'cycle dependency changed during recovery'):
+                            cycle_recovery(self.root/'candidate.exe',self.root,self.root,self.before,
+                                           self.prefix,self.hashes['before'],self.host)
+                finally:
+                    path.write_bytes(original)
+
     def test_recovery_rejects_candidate_mismatch(self):
         with self.assertRaisesRegex(PreflightError,'installed executable differs'):
             self.recovery(dict(status='REVIEW_READY_UNQUALIFIED',candidate={'sha256':'c'*64}))
