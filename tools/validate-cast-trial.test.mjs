@@ -79,3 +79,27 @@ test('blank evidence identifiers fail closed', () => {
   const b=fixture(); b.events[0].sourceId=' ';
   assert.equal(validateCastTrial(b).reason,'event-session-source-or-clock-invalid');
 });
+
+test('wrong-target attempt cannot satisfy selected trial', () => {
+  const a=fixture(); a.events[0].targetId='other-target';
+  assert.equal(validateCastTrial(a).reason,'input-attempt-not-observed');
+});
+test('another explicit target does not inflate the selected attempt count', () => {
+  const a=fixture();
+  a.events.splice(1,0,{...a.events[0],id:'other',targetId:'other-target',time:102});
+  assert.equal(validateCastTrial(a).accepted,true);
+});
+
+test('trial verdict preserves target uncertainty and excluded-event counts', () => {
+  const a=fixture();
+  a.events.splice(1,0,{...a.events[0],id:'foreign-target',targetId:'other-target',time:102});
+  const first=validateCastTrial(a);
+  assert.equal(first.accepted,true);
+  assert.equal(first.attemptTargetBinding,'target-unspecified');
+  assert.equal(first.excludedEventCounts.otherTarget,1);
+  a.events[0].targetId=a.identity.targetId;
+  const second=validateCastTrial(a);
+  assert.equal(second.attemptTargetBinding,'exact-target');
+  assert.equal(second.latencyQualified,false);
+  assert.equal(second.serverAcknowledgementQualified,false);
+});

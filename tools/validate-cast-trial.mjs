@@ -41,6 +41,8 @@ export function validateCastTrial(input, { expectedHost = 'AMD-DESKTOP' } = {}) 
     return reject('outcome-precedes-attempt');
   return { accepted: true, reason: 'structural-trial-only', sessionId: input.sessionId,
     evidenceHost: expectedHost, clockPairCount: pairGate.pairCount, observed: verdict.observed,
+    attemptTargetBinding: attempts[0].targetBinding,
+    excludedEventCounts: verdict.excludedEventCounts,
     latencyQualified: false, serverAcknowledgementQualified: false,
     limitations: 'No clock calibration, live input processing, request acceptance, or causal latency established.' };
 }

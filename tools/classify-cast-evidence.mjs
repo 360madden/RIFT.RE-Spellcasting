@@ -4,10 +4,13 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const kinds = new Set(['input_attempt', 'castbar_start', 'castbar_end', 'effect', 'interrupt', 'queue_setting']);
+const named = value => typeof value === 'string' && value.trim().length > 0;
+const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 export function classifyCastEvidence(events, identity) {
   if (!Array.isArray(events)) throw new TypeError('events must be an array');
-  const validIdentity = identity && typeof identity.casterId === 'string' && identity.casterId &&
-    typeof identity.abilityId === 'string' && identity.abilityId;
+  const validIdentity = record(identity) && named(identity.casterId) && named(identity.abilityId);
+  if (validIdentity && identity.targetId !== undefined && !named(identity.targetId))
+    throw new TypeError('specified targetId must be a nonblank string');
   if ((!validIdentity && (identity != null || events.some(e => e?.kind !== 'queue_setting')))) {
     throw new TypeError('exact casterId and abilityId required for cast events');
   }
@@ -16,11 +19,13 @@ export function classifyCastEvidence(events, identity) {
   const observed = new Set();
   const provenance = [];
   const queueModes = [];
+  // Count excluded evidence instead of silently collapsing missing identity,
+  // foreign identity and target mismatches into a single absent observation.
+  const excluded = { missingCastIdentity: 0, otherCastIdentity: 0, otherTarget: 0, missingEffectTarget: 0 };
   for (const event of events) {
-    if (!event || !kinds.has(event.kind) || typeof event.id !== 'string' || !event.id ||
+    if (!record(event) || !kinds.has(event.kind) || !named(event.id) ||
         !Number.isFinite(event.time) || event.time < 0 ||
-        typeof event.clockDomain !== 'string' || !event.clockDomain ||
-        typeof event.sourceId !== 'string' || !event.sourceId) {
+        !named(event.clockDomain) || !named(event.sourceId)) {
       throw new TypeError('event missing valid kind, id, monotonic time, clockDomain or sourceId');
     }
     if (seen.has(event.id)) throw new Error('duplicate event id ' + event.id);
@@ -32,14 +37,42 @@ export function classifyCastEvidence(events, identity) {
     lastTime.set(event.clockDomain, event.time);
     if (event.kind === 'queue_setting') {
       if (!['Full', 'Short', 'None'].includes(event.mode)) throw new TypeError('invalid queue mode label');
-      queueModes.push({ mode: event.mode, eventId: event.id, sourceId: event.sourceId });
+      queueModes.push({ mode: event.mode, eventId: event.id, sourceId: event.sourceId,
+        clockDomain: event.clockDomain, time: event.time });
       continue;
     }
-    if (event.casterId !== identity.casterId || event.abilityId !== identity.abilityId) continue;
-    if (event.kind === 'effect' && identity.targetId !== undefined && event.targetId !== identity.targetId) continue;
+    // A supplied malformed ID is not equivalent to an omitted ID. Preserve
+    // absent caster/ability as unattributed evidence, never as a match.
+    for (const field of ['casterId', 'abilityId', 'targetId']) {
+      if (event[field] !== undefined && !named(event[field]))
+        throw new TypeError('invalid event ' + field);
+    }
+    if (!named(event.casterId) || !named(event.abilityId)) {
+      excluded.missingCastIdentity++;
+      continue;
+    }
+    if (event.casterId !== identity.casterId || event.abilityId !== identity.abilityId) {
+      excluded.otherCastIdentity++;
+      continue;
+    }
+    const targetRequested = identity.targetId !== undefined;
+    const targetReported = event.targetId !== undefined;
+    if (targetRequested && targetReported && event.targetId !== identity.targetId) {
+      excluded.otherTarget++;
+      continue;
+    }
+    if (targetRequested && event.kind === 'effect' && !targetReported) {
+      excluded.missingEffectTarget++;
+      continue;
+    }
+    // Castbar/input observations often lack target telemetry. They can
+    // describe the matching caster/ability, but not an exact target.
+    const targetBinding = !targetRequested ? 'target-not-requested'
+      : targetReported ? 'exact-target' : 'target-unspecified';
     observed.add(event.kind);
     provenance.push({ kind: event.kind, eventId: event.id, sourceId: event.sourceId,
-      clockDomain: event.clockDomain, time: event.time });
+      clockDomain: event.clockDomain, time: event.time, casterId: event.casterId,
+      abilityId: event.abilityId, targetId: event.targetId ?? null, targetBinding });
   }
   return {
     identity: validIdentity ? { ...identity } : null,
@@ -55,7 +88,8 @@ export function classifyCastEvidence(events, identity) {
     gcdActive: 'unknown',
     queueSettingsObserved: queueModes,
     provenance,
-    limitations: 'Observed events are not proof of native/server acknowledgement or queue behavior.'
+    excludedEventCounts: excluded,
+    limitations: 'Observed events are not proof of causality, native/server acknowledgement or queue behavior. Target-unspecified observations do not establish exact target identity.'
   };
 }
 

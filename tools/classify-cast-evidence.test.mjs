@@ -50,3 +50,54 @@ test('reject duplicate IDs, invalid queue names and missing evidence provenance'
   assert.throws(() => classifyCastEvidence([e('queue_setting', 'q', 1, {mode: 'Maybe'})], who), /invalid queue/);
   assert.throws(() => classifyCastEvidence([{kind: 'effect', id: 'x', time: 1, clockDomain: 'game-frame'}], who), /sourceId/);
 });
+
+test('wrong-target attempts, castbar events and interrupts are not matching evidence', () => {
+  const r=classifyCastEvidence([
+    e('input_attempt','i',1,{targetId:'other'}),
+    e('castbar_start','s',2,{targetId:'other'}),
+    e('castbar_end','z',3,{targetId:'other'}),
+    e('interrupt','x',4,{targetId:'other'})
+  ],who);
+  assert.deepEqual(r.observed,{attempt:false,castbarStart:false,castbarEnd:false,effect:false,interrupt:false});
+  assert.equal(r.excludedEventCounts.otherTarget,4);
+  assert.equal(r.provenance.length,0);
+});
+test('target-unspecified input is distinct from exact-target effect evidence', () => {
+  const r=classifyCastEvidence([
+    e('input_attempt','i',1),
+    e('effect','e',2,{targetId:who.targetId})
+  ],who);
+  assert.deepEqual(r.provenance.map(x=>x.targetBinding),['target-unspecified','exact-target']);
+  assert.deepEqual(r.provenance.map(x=>x.targetId),[null,who.targetId]);
+  assert.equal(r.serverAccepted,'unknown');
+});
+test('missing and foreign identities and missing effect targets are counted separately', () => {
+  const r=classifyCastEvidence([
+    e('input_attempt','i',1,{casterId:undefined}),
+    e('castbar_start','s',2,{abilityId:'other'}),
+    e('effect','a',3,{targetId:'other'}),
+    e('effect','b',4)
+  ],who);
+  assert.deepEqual(r.excludedEventCounts,{missingCastIdentity:1,otherCastIdentity:1,otherTarget:1,missingEffectTarget:1});
+  assert.equal(r.provenance.length,0);
+});
+test('omitting target from the requested identity does not claim target qualification', () => {
+  const r=classifyCastEvidence([e('effect','e',2,{targetId:who.targetId})],{casterId:who.casterId,abilityId:who.abilityId});
+  assert.equal(r.provenance[0].targetBinding,'target-not-requested');
+});
+test('malformed requested and reported IDs are rejected', () => {
+  for(const value of ['', ' ', null, 0]) {
+    assert.throws(()=>classifyCastEvidence([], {...who,targetId:value}),/targetId/);
+    assert.throws(()=>classifyCastEvidence([e('input_attempt','i',1,{targetId:value})],who),/invalid event targetId/);
+  }
+  assert.throws(()=>classifyCastEvidence([], {...who,casterId:' '}),/exact casterId/);
+  assert.throws(()=>classifyCastEvidence([e('input_attempt','i',1,{abilityId:' '})],who),/invalid event abilityId/);
+});
+test('blank event metadata rejected, queue observation preserves own clock and time', () => {
+  for (const field of ['id','sourceId','clockDomain'])
+    assert.throws(()=>classifyCastEvidence([e('input_attempt','i',1,{[field]:' '})],who),/event missing valid/);
+  const r=classifyCastEvidence([e('queue_setting','q',3,{mode:'None',clockDomain:'file-receipt'})],null);
+  assert.equal(r.queueSettingsObserved[0].clockDomain,'file-receipt');
+  assert.equal(r.queueSettingsObserved[0].time,3);
+  assert.equal(r.requestQueued,'unknown');
+});
