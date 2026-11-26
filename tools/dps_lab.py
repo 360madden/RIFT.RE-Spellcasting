@@ -11,7 +11,7 @@ from fractions import Fraction
 import json
 from time import perf_counter_ns
 
-from dps_planner import PERIODIC_GRID_MS, Step, optimize, validate_model
+from dps_planner import PERIODIC_GRID_MS, Step, optimize, validate_model, validate_resources
 from dps_profile import Scenario, load_profile
 
 
@@ -27,6 +27,8 @@ class Metrics:
     periodic_damage: int = 0
     clipped_periodic_ticks: int = 0
     bonus_damage: int = 0
+    extra_final_resource_milli: dict | None = None
+    extra_wasted_resource_milli: dict | None = None
 
 
 def replay(scenario: Scenario, steps):
@@ -41,13 +43,16 @@ def replay(scenario: Scenario, steps):
     ready = {a.id: a.ready_at_ms for a in abilities}
     cap = capacity * 1000
     amount = initial * 1000
+    pools = {p.id: p for p in validate_resources(scenario.extra_resources)}
+    extra = {key: p.initial * 1000 for key, p in pools.items()}
+    extra_waste = dict.fromkeys(pools, 0)
     wasted = damage = occupied = 0
     periodic_damage = clipped_ticks = bonus_damage = 0
     active = {}
     # Independent explicit tick lists; no use of the optimizer's compressed
     # next-tick/remaining representation or transition routine.
     pending = {a.id: [] for a in abilities}
-    grid = PERIODIC_GRID_MS if any(a.periodic_ticks or a.effect_duration_ms for a in abilities) else 1
+    grid = PERIODIC_GRID_MS if pools or any(a.periodic_ticks or a.effect_duration_ms for a in abilities) else 1
     now = 0
 
     def amplify(base, when):
@@ -66,6 +71,10 @@ def replay(scenario: Scenario, steps):
             due = [t for t in times if t <= end]
             periodic_damage += sum(amplify(by_id[ability_id].periodic_damage, t) for t in due)
             pending[ability_id] = [t for t in times if t > end]
+        for key, pool in pools.items():
+            generated = extra[key] + pool.regen_per_second * (end - now)
+            extra_waste[key] += max(0, generated - pool.capacity * 1000)
+            extra[key] = min(pool.capacity * 1000, generated)
         produced = amount + regen * (end - now)
         wasted += max(0, produced - cap)
         amount = min(cap, produced)
@@ -96,6 +105,10 @@ def replay(scenario: Scenario, steps):
         if amount < a.cost * 1000:
             raise ValueError('step exceeds available resource')
         amount -= a.cost * 1000
+        for key, cost in a.extra_costs:
+            if extra[key] < cost * 1000:
+                raise ValueError('step exceeds additional resource: ' + key)
+            extra[key] -= cost * 1000
         ready[a.id] = (step.start_ms if a.cooldown_anchor == 'start' else impact) + a.cooldown_ms
         advance(impact)
         damage += amplify(step.damage, impact)
@@ -110,12 +123,18 @@ def replay(scenario: Scenario, steps):
         grant = amount + a.resource_gain * 1000
         wasted += max(0, grant - cap)
         amount = min(cap, grant)
+        for key, gain in a.extra_gains:
+            generated = extra[key] + gain * 1000
+            limit = pools[key].capacity * 1000
+            extra_waste[key] += max(0, generated - limit)
+            extra[key] = min(limit, generated)
         clipped_end = min(step.end_ms, horizon)
         advance(clipped_end)
         occupied += clipped_end - step.start_ms
     advance(horizon)
     return Metrics(damage + periodic_damage, len(steps), occupied, horizon - occupied,
-                   amount, wasted, damage, periodic_damage, clipped_ticks, bonus_damage)
+                   amount, wasted, damage, periodic_damage, clipped_ticks, bonus_damage,
+                   extra or None, extra_waste or None)
 
 
 def baseline(scenario: Scenario, policy):
@@ -131,8 +150,11 @@ def baseline(scenario: Scenario, policy):
         scenario.abilities, **scenario.model_kwargs())
     cap = capacity * 1000
     amount = min(cap, initial * 1000 + regen * now)
+    pools = {p.id: p for p in validate_resources(scenario.extra_resources)}
+    extra = {key: min(p.capacity * 1000, p.initial * 1000 + p.regen_per_second * now)
+             for key, p in pools.items()}
     ready = {a.id: a.ready_at_ms for a in abilities}
-    grid = PERIODIC_GRID_MS if any(a.periodic_ticks or a.effect_duration_ms for a in abilities) else 1
+    grid = PERIODIC_GRID_MS if pools or any(a.periodic_ticks or a.effect_duration_ms for a in abilities) else 1
     steps = []
     while now < horizon:
         choices = []
@@ -146,6 +168,19 @@ def baseline(scenario: Scenario, policy):
                 if not regen:
                     continue
                 start += (need + regen - 1) // regen
+            # Each pool accrues independently; wait until every cost is
+            # affordable, without treating one pool as convertible to another.
+            blocked = False
+            for key, cost in a.extra_costs:
+                pool = pools[key]
+                need = cost * 1000 - extra[key]
+                if need > 0:
+                    if pool.regen_per_second == 0:
+                        blocked = True
+                        break
+                    start = max(start, now + (need + pool.regen_per_second - 1) // pool.regen_per_second)
+            if blocked:
+                continue
             start = ((start + grid - 1) // grid) * grid
             impact = start + a.impact_delay
             if start < horizon and impact <= horizon:
@@ -163,6 +198,15 @@ def baseline(scenario: Scenario, policy):
         amount = min(cap, amount + regen * (start - now)) - a.cost * 1000
         amount = min(cap, amount + regen * a.impact_delay + a.resource_gain * 1000)
         amount = min(cap, amount + regen * (min(end, horizon) - impact))
+        costs, gains = dict(a.extra_costs), dict(a.extra_gains)
+        for key, pool in pools.items():
+            limit = pool.capacity * 1000
+            rate = pool.regen_per_second
+            value = min(limit, extra[key] + rate * (start - now))
+            value -= costs.get(key, 0) * 1000
+            value = min(limit, value + rate * a.impact_delay)
+            value = min(limit, value + gains.get(key, 0) * 1000)
+            extra[key] = min(limit, value + rate * (min(end, horizon) - impact))
         ready[a.id] = (start if a.cooldown_anchor == 'start' else impact) + a.cooldown_ms
         steps.append(Step(a.id, start, end, a.damage, impact))
         now = min(end, horizon)
@@ -215,7 +259,8 @@ def evaluate(scenario: Scenario):
         'best_evaluated_policy': selected,
         'best_evaluated_damage': rows[selected]['damage'],
         'optimal_within_model': rows['lookahead']['search_complete'],
-        'search_model': ('100-ms-effect-grid' if any(a.effect_duration_ms for a in scenario.abilities)
+        'search_model': ('100-ms-multi-resource-grid' if scenario.extra_resources
+                         else '100-ms-effect-grid' if any(a.effect_duration_ms for a in scenario.abilities)
                          else '100-ms-periodic-grid' if any(a.periodic_ticks for a in scenario.abilities)
                          else 'earliest-feasible-direct-impact'),
         'lookahead_vs_best_baseline_damage': predicted - best_baseline,
