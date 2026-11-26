@@ -95,6 +95,26 @@ is not native/runtime qualification. Use fresh capture evidence for later
 updates, not the example manifest if the executable changes. See the
 [30-step recovery checkpoint](docs/PATCH-RECOVERY-CYCLE-30.md).
 
+### Complete stored patch cycle
+
+When Update Helper has produced both after captures, consistency and changes
+reports, reuse its independently reviewed cycle verifier through the
+Spellcasting adapter. The baseline manifest hash must be independently
+recorded. For the November 26 LEGION evidence bundle:
+
+```powershell
+python -B tools/verify_recovery_cycle.py --candidate 'C:\Program Files (x86)\Glyph\Games\RIFT\Live\rift_x64.exe' --archive-dir 'C:\work\rift-build-archives' --before 'C:\work\Update Helper\before-20261124-legion.json' --prefix riftworld-20261126-01 --before-sha 6612cab5ad31162cc0eab21266ed3839c4a2ef1e12e3a2aa82536d5b195c983e --expected-host LEGION
+```
+
+The adapter verifies the five stored evidence files using pinned copies of
+the reviewed Update Helper scripts, then checks the actual executable and
+archives using the recovery report. It derives the reference SHA from the
+independently pinned before manifest. It never scans the installation or
+creates archives. Exit 0/3/2 have the same meanings as the recovery report.
+The complete cycle verifier is specific to its reviewed source digests;
+new dependency versions need review. See [cycle 2](docs/PATCH-RECOVERY-CYCLE-30-02.md).
+Stored evidence agreement is not a fresh hash of every installed asset.
+
 ### Shared Update Helper interoperability
 
 The separate Update Helper utility owns whole-install captures and manifest
