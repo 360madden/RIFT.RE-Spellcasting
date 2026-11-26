@@ -1,0 +1,33 @@
+name: Portable patch recovery tests
+on:
+  push:
+    branches: [main, 'patch-recovery/**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  portable:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    env:
+      RIFT_EXE_PATH: ''
+      RIFT_EVIDENCE_ROOT: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Python synthetic recovery tests
+        run: python -B -m unittest discover -s tools -p 'test_*.py' -v
+      - name: Evidence index structure only (no sibling claims)
+        run: node tools/verify-evidence.mjs --index-only
+      - name: Node portable tests (external source and PE tests skipped)
+        run: node --test

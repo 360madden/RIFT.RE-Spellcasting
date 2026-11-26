@@ -41,6 +41,27 @@ Exit 0: identical build. Exit 3: changed or candidate-only, unqualified.
 Exit 2: blocked (including missing or wrong baseline). JSON includes SHA-256,
 PE section fingerprints and layout. See [LEGION validation](docs/PATCH-PREFLIGHT-LEGION.md).
 
+### Preserve a build before updating
+
+On a verified physical host, create a dedicated external archive directory
+(outside the repository and game directory), and independently confirm the
+installed PE SHA-256 before running this command. The digest below is a
+historical LEGION observation, not a claim about the currently installed build.
+
+```powershell
+python -B tools/archive_build.py --source 'C:\Program Files (x86)\Glyph\Games\RIFT\Live\rift_x64.exe' --archive-dir 'C:\work\rift-build-archives' --expected-sha df954b798331e18359be62a31cc74b49fc3f50b87385ebb080a5448256322c01 --expected-host LEGION
+```
+
+Exit 0 means a SHA-verified content-addressed copy exists; exit 2 means
+blocked. Existing archives are never overwritten. The helper requires a
+filesystem supporting hard links for atomic publication. Keep archives
+outside Git and never use an archived binary as a replacement for the
+installed client. Archive success does not qualify native addresses.
+
+The portable GitHub Actions workflow runs synthetic Python and Node tests
+on Windows and Linux without an installed game or sibling repositories.
+Historical PE tests remain opt-in and are reported as skipped in CI.
+
 ### Shared Update Helper interoperability
 
 The separate Update Helper utility owns whole-install captures and manifest

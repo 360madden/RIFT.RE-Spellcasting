@@ -10,6 +10,8 @@ import hashlib
 import json
 from pathlib import Path
 import socket
+import stat
+import tempfile
 import subprocess
 import sys
 
@@ -20,13 +22,37 @@ from patch_preflight import BASELINE_SHA256, PreflightError, fingerprint
 HELPER_SHA256 = '27a1b14561f6efc2b9d74e2e509712c06ca277eb54a35230a9b08ef95a49498f'
 DEFAULT_HELPER = Path(__file__).resolve().parents[2] / 'Update Helper' / 'update_helper.py'
 MAX_MANIFEST_BYTES = 32 * 1024 * 1024
+MAX_HELPER_BYTES = 1024 * 1024
+
+def read_bounded(path, limit, label):
+    # Avoid treating a device/pipe or an enormous file as an evidence document.
+    path = Path(path)
+    info = path.stat()
+    if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
+        raise PreflightError(f'{label} is not a bounded regular file')
+    with path.open('rb') as f:
+        data = f.read(limit+1)
+    if len(data) > limit:
+        raise PreflightError(f'{label} exceeds size bound')
+    return data
 
 def read_manifest(path):
-    with Path(path).open('rb') as f:
-        data = f.read(MAX_MANIFEST_BYTES+1)
-    if len(data)>MAX_MANIFEST_BYTES:
-        raise PreflightError('manifest exceeds size bound')
-    return data
+    return read_bounded(path, MAX_MANIFEST_BYTES, 'manifest')
+
+def parse_object(data):
+    # Duplicate JSON keys would permit ambiguous receipts. Reject them
+    # instead of silently accepting the last value.
+    def unique(pairs):
+        obj = {}
+        for key, value in pairs:
+            if key in obj:
+                raise PreflightError(f'duplicate JSON key: {key}')
+            obj[key] = value
+        return obj
+    doc = json.loads(data, object_pairs_hook=unique)
+    if not isinstance(doc, dict):
+        raise PreflightError('expected JSON object')
+    return doc
 
 def sha(data):
     return hashlib.sha256(data).hexdigest()
@@ -37,12 +63,17 @@ def bind(doc, verified, manifest_sha, candidate, expected_host, expected_phase):
     The external validator checks manifest schema, completeness and totals.
     Here we enforce our narrower consumer identity and provenance rules.
     """
+    if not isinstance(doc, dict) or not isinstance(verified, dict):
+        raise PreflightError('manifest and validator receipt must be objects')
     if verified.get('valid') is not True or verified.get('manifest_sha256') != manifest_sha:
         raise PreflightError('manifest validator receipt mismatch')
     if verified.get('host') != expected_host or doc.get('host') != expected_host:
         raise PreflightError('manifest host mismatch')
     if verified.get('phase') != expected_phase or doc.get('phase') != expected_phase:
         raise PreflightError('manifest phase mismatch')
+    for key in ('file_count', 'bytes'):
+        if type(doc.get(key)) is not int or doc[key] < 0 or verified.get(key) != doc[key]:
+            raise PreflightError(f'manifest validator {key} mismatch')
     if Path(candidate['path']).resolve() != (Path(doc['root'])/'rift_x64.exe').resolve():
         raise PreflightError('candidate path is outside the recorded install identity')
     rows=[r for r in doc['files'] if r['path'].casefold()=='rift_x64.exe']
@@ -66,20 +97,27 @@ def verify_and_bind(helper, manifest, candidate_path, expected_host, expected_ph
         raise PreflightError('wrong executing host')
     helper=Path(helper).resolve(strict=True)
     manifest=Path(manifest).resolve(strict=True)
-    if sha(helper.read_bytes())!=HELPER_SHA256:
+    helper_data=read_bounded(helper, MAX_HELPER_BYTES, 'helper')
+    if sha(helper_data)!=HELPER_SHA256:
         raise PreflightError('Update Helper source SHA mismatch; review utility before use')
     data=read_manifest(manifest)
+    doc=parse_object(data)
     digest=sha(data)
-    # Invoke only the reviewed read-only verify subcommand, with a bounded
-    # timeout and isolated Python imports. Never call capture or compare.
-    proc=subprocess.run([sys.executable,'-I','-B',str(helper),'verify',str(manifest)],
-                        capture_output=True,text=True,encoding='utf-8',timeout=30,check=False)
+    # Verify the exact captured bytes, not a path that may be rewritten
+    # after hashing. The verify subcommand needs no sibling files and
+    # does not write output. Originals are checked again afterward.
+    with tempfile.TemporaryDirectory(prefix='rift-verify-') as stage:
+        snapshot_helper=Path(stage)/'update_helper.py'
+        snapshot_manifest=Path(stage)/'manifest.json'
+        snapshot_helper.write_bytes(helper_data)
+        snapshot_manifest.write_bytes(data)
+        proc=subprocess.run([sys.executable,'-I','-B',str(snapshot_helper),'verify',str(snapshot_manifest)],
+                            capture_output=True,text=True,encoding='utf-8',timeout=30,check=False)
     if proc.returncode!=0:
         raise PreflightError('Update Helper rejected the manifest')
-    if sha(helper.read_bytes())!=HELPER_SHA256 or sha(read_manifest(manifest))!=digest:
+    if sha(read_bounded(helper, MAX_HELPER_BYTES, 'helper'))!=HELPER_SHA256 or sha(read_manifest(manifest))!=digest:
         raise PreflightError('helper or manifest changed during verification')
-    verified=json.loads(proc.stdout)
-    doc=json.loads(data)
+    verified=parse_object(proc.stdout)
     return bind(doc,verified,digest,fingerprint(candidate_path),expected_host,expected_phase)
 
 def main(argv=None):

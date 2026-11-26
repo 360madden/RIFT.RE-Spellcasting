@@ -1,7 +1,8 @@
 """Consumer tests; fixtures contain no game code."""
 import copy
 import hashlib
-import os
+import json
+import subprocess
 from pathlib import Path
 import socket
 import tempfile
@@ -10,7 +11,7 @@ from unittest.mock import patch
 
 from patch_preflight import fingerprint, PreflightError
 from test_patch_preflight import fixture
-from verify_update_manifest import bind, verify_and_bind, DEFAULT_HELPER
+from verify_update_manifest import bind, verify_and_bind, DEFAULT_HELPER, parse_object, read_bounded
 
 class BindingTests(unittest.TestCase):
     def setUp(self):
@@ -23,10 +24,12 @@ class BindingTests(unittest.TestCase):
         self.digest='a'*64
         self.host=socket.gethostname().upper()
         self.doc=dict(host=self.host,phase='after',root=str(self.root),
+                      file_count=1,bytes=self.candidate['size'],
                       files=[dict(path='rift_x64.exe',size=self.candidate['size'],
                                   sha256=self.candidate['sha256'])])
         self.receipt=dict(valid=True,host=self.host,phase='after',
-                          manifest_sha256=self.digest,exe_sha256=self.candidate['sha256'])
+                          manifest_sha256=self.digest,exe_sha256=self.candidate['sha256'],
+                          file_count=1,bytes=self.candidate['size'])
 
     def result(self):
         return bind(self.doc,self.receipt,self.digest,self.candidate,self.host,'after')
@@ -57,6 +60,48 @@ class BindingTests(unittest.TestCase):
     def test_changed_exe(self):
         self.candidate['sha256']='c'*64
         with self.assertRaisesRegex(PreflightError,'candidate identity'):self.result()
+
+    def test_receipt_totals_mismatch(self):
+        self.receipt['bytes'] += 1
+        with self.assertRaisesRegex(PreflightError,'validator bytes mismatch'):self.result()
+
+    def test_duplicate_json_keys_refused(self):
+        with self.assertRaisesRegex(PreflightError,'duplicate JSON key'):
+            parse_object('{"host":"LEGION","host":"OTHER"}')
+
+    def test_nonobject_receipt_refused(self):
+        with self.assertRaisesRegex(PreflightError,'expected JSON object'):
+            parse_object('[]')
+
+    def test_bounded_reader_refuses_large_input(self):
+        with self.assertRaisesRegex(PreflightError,'bounded regular file'):
+            read_bounded(self.path,1,'fixture')
+
+    def test_pinned_snapshot_execution_and_source_drift(self):
+        helper=self.root/'mock_helper.py'
+        manifest=self.root/'manifest.json'
+        payload=b'# synthetic reviewed validator fixture\n'
+        helper.write_bytes(payload)
+        data=json.dumps(self.doc).encode()
+        manifest.write_bytes(data)
+        receipt=dict(self.receipt,manifest_sha256=hashlib.sha256(data).hexdigest())
+        def simulated_run(args, **kwargs):
+            # Test the actual temporary snapshots, without running arbitrary code.
+            self.assertNotEqual(Path(args[3]),helper)
+            self.assertEqual(Path(args[3]).read_bytes(),payload)
+            self.assertEqual(Path(args[5]).read_bytes(),data)
+            self.assertEqual(args[4],'verify')
+            return subprocess.CompletedProcess(args,0,json.dumps(receipt),'')
+        with patch('verify_update_manifest.HELPER_SHA256',hashlib.sha256(payload).hexdigest()):
+            with patch('verify_update_manifest.subprocess.run',side_effect=simulated_run):
+                self.assertTrue(verify_and_bind(helper,manifest,self.path,self.host,'after')['capture_manifest_bound'])
+            def changed_run(args,**kwargs):
+                result=simulated_run(args,**kwargs)
+                helper.write_bytes(b'changed')
+                return result
+            with patch('verify_update_manifest.subprocess.run',side_effect=changed_run):
+                with self.assertRaisesRegex(PreflightError,'changed during verification'):
+                    verify_and_bind(helper,manifest,self.path,self.host,'after')
 
     def test_wrong_helper_blocked_without_execution(self):
         helper=self.root/'other.py'
