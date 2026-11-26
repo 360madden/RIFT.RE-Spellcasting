@@ -20,6 +20,14 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 ENV_KEYS = ('RIFT_EVIDENCE_ROOT', 'RIFT_RR2_BASELINE_ROOT', 'RIFT_EXE_PATH')
 TIMEOUT = 180
+# Reviewed inventory of opt-in Node tests. Update this ledger when a new
+# evidence-dependent case is added, so missing cases or unexpected skips
+# cannot disappear behind a zero process exit code.
+EXPECTED_NODE_SKIPS = {
+    'RIFT_EVIDENCE_ROOT': 6,
+    'RIFT_RR2_BASELINE_ROOT': 1,
+    'RIFT_EXE_PATH': 34,
+}
 
 
 def test_counts(output, kind):
@@ -48,6 +56,38 @@ def test_counts(output, kind):
     raise ValueError('unknown test runner')
 
 
+def validate_node_scope(output, counts, env):
+    """Reconcile the flat TAP plan and skips with the selected inputs.
+
+    Scope checking is intentionally independent of the aggregate summary.
+    Only the reviewed missing-input directives may skip cases. A change
+    to the suite's opt-in inventory requires an explicit ledger update.
+    """
+    plans = re.findall(r'^1\.\.(\d+)[ \t]*$', output, re.M)
+    if len(plans) != 1 or int(plans[0]) != counts['total']:
+        raise ValueError('Node TAP plan does not match the test summary')
+    rows = re.findall(r'^ok (\d+) - ([^\r\n]+)$', output, re.M)
+    numbers = [int(number) for number, _ in rows]
+    if numbers != list(range(1, counts['total'] + 1)):
+        raise ValueError('Node TAP cases missing, duplicated or out of order')
+    observed = dict.fromkeys(ENV_KEYS, 0)
+    for _, description in rows:
+        # Node 24 emits "# SKIP Set <ENV_KEY> ..." for unavailable sources.
+        # Reject all other skips, including accidentally disabled tests.
+        if re.search(r'\s# SKIP(?:\s|$)', description, re.I):
+            match = re.search(r'\s# SKIP Set (RIFT_[A-Z0-9_]+) to .+$', description)
+            if not match or match[1] not in observed:
+                raise ValueError('unrecognized Node skip: '+description)
+            observed[match[1]] += 1
+    if sum(observed.values()) != counts['skipped']:
+        raise ValueError('Node skip directives do not match the summary')
+    expected = {key: 0 if env.get(key) else EXPECTED_NODE_SKIPS[key]
+                for key in ENV_KEYS}
+    if observed != expected:
+        raise ValueError(f'Node evidence scope mismatch: expected {expected}, observed {observed}')
+    return observed
+
+
 def run_gate(label, args, env, kind=None):
     try:
         proc = subprocess.run(args, cwd=ROOT, env=env, capture_output=True,
@@ -61,6 +101,11 @@ def run_gate(label, args, env, kind=None):
     if proc.returncode == 0 and kind:
         try:
             result['counts'] = test_counts(output, kind)
+            if kind == 'node':
+                result['skipped_by_input'] = validate_node_scope(
+                    output, result['counts'], env)
+            elif result['counts']['skipped']:
+                raise ValueError('unexpected Python regression skip')
         except ValueError as error:
             result.update(status='FAILED', error=str(error))
     if result['status'] == 'FAILED':
@@ -105,7 +150,8 @@ def verify(evidence_root=None, rr2_baseline_root=None, historical_exe=None):
                                          if g['name'].endswith('-regression')),
                 runtime_qualified=False, latency_qualified=False,
                 limitations='Passing tests establish only the selected offline checks. '
-                'Unrequested external evidence and skipped tests are not verified.')
+                'Unrequested external evidence and skipped tests are not verified. '
+                'The Node skip ledger must match the explicitly selected inputs.')
 
 
 def main(argv=None):

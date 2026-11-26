@@ -6,7 +6,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from verify_suite import ENV_KEYS, run_gate, test_counts, verify
+from verify_suite import (ENV_KEYS, EXPECTED_NODE_SKIPS, run_gate, test_counts,
+                          validate_node_scope, verify)
 
 TAP = """TAP version 13
 1..3
@@ -24,6 +25,74 @@ Ran 3 tests in 0.001s
 
 OK (skipped=1)
 """
+
+
+def scoped_tap(skips):
+    """Build a small valid flat TAP stream with the supplied skip directives."""
+    lines = ['TAP version 13', 'ok 1 - portable test']
+    for number, key in enumerate(skips, 2):
+        lines.append(f'ok {number} - external test {number} # SKIP Set {key} to a source path')
+    total = len(lines) - 1
+    return '\n'.join(lines + [
+        f'1..{total}', f'# tests {total}', '# suites 0', '# pass 1',
+        '# fail 0', '# cancelled 0', f'# skipped {len(skips)}', '# todo 0', ''
+    ])
+
+
+class ScopeTests(unittest.TestCase):
+    def test_portable_scope_requires_reviewed_inventory(self):
+        keys = [key for key, count in EXPECTED_NODE_SKIPS.items() for _ in range(count)]
+        output = scoped_tap(keys)
+        self.assertEqual(validate_node_scope(output, test_counts(output, 'node'), {}),
+                         EXPECTED_NODE_SKIPS)
+
+    def test_requested_input_may_not_be_skipped(self):
+        output = scoped_tap(['RIFT_EXE_PATH'])
+        with self.assertRaisesRegex(ValueError, 'scope mismatch'):
+            validate_node_scope(output, test_counts(output, 'node'),
+                                {key: 'requested' for key in ENV_KEYS})
+
+    def test_all_inputs_requested_allows_no_skips(self):
+        output = scoped_tap([])
+        self.assertEqual(validate_node_scope(output, test_counts(output, 'node'),
+                                            {key: 'requested' for key in ENV_KEYS}),
+                         dict.fromkeys(ENV_KEYS, 0))
+
+    def test_rejects_unrecognized_skip_directive(self):
+        output = scoped_tap(['RIFT_UNREVIEWED_INPUT'])
+        with self.assertRaisesRegex(ValueError, 'unrecognized Node skip'):
+            validate_node_scope(output, test_counts(output, 'node'), {})
+
+    def test_missing_cases_cannot_be_hidden_by_valid_summary(self):
+        output = scoped_tap([])
+        with self.assertRaisesRegex(ValueError, 'scope mismatch'):
+            validate_node_scope(output, test_counts(output, 'node'), {})
+
+    def test_plan_and_cases_must_reconcile(self):
+        baseline = scoped_tap(['RIFT_EXE_PATH'])
+        for output in (baseline.replace('1..2', '1..3'),
+                       baseline.replace('ok 2 -', 'ok 1 -'),
+                       baseline.replace('ok 2 -', 'not ok 2 -'),
+                       baseline.replace(' # SKIP', ' # omitted')):
+            with self.subTest(output=output):
+                with self.assertRaises(ValueError):
+                    validate_node_scope(output, test_counts(output, 'node'), {})
+
+    def test_zero_exit_with_wrong_scope_fails_gate(self):
+        output = scoped_tap([])
+        with patch('verify_suite.subprocess.run', return_value=subprocess.CompletedProcess(
+                ['node'], 0, output, '')):
+            result = run_gate('node-regression', ['node'], {}, 'node')
+        self.assertEqual(result['status'], 'FAILED')
+        self.assertIn('scope mismatch', result['error'])
+        self.assertEqual(result['counts']['passed'], 1)
+
+    def test_unexpected_python_skip_fails_gate(self):
+        with patch('verify_suite.subprocess.run', return_value=subprocess.CompletedProcess(
+                ['python'], 0, '', PYTHON)):
+            result = run_gate('python-regression', ['python'], {}, 'python')
+        self.assertEqual(result['status'], 'FAILED')
+        self.assertEqual(result['counts']['skipped'], 1)
 
 
 class SuiteTests(unittest.TestCase):
