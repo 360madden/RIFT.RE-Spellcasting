@@ -25,18 +25,22 @@
         "tools/dps_benchmark.py",
         "tools/test_dps_benchmark.py"
       ],
-      "acceptance": "Use existing load_profile/evaluate contracts to benchmark tracked synthetic profiles, recording damage, search completeness and repeated timing distributions separately. No core changes or machine-specific timing assertions."
+      "acceptance": "Use existing load_profile/evaluate contracts to benchmark tracked synthetic profiles, recording damage, search completeness and repeated timing distributions separately. No core changes or machine-specific timing assertions.",
+      "merged_commit": "cd35e8d91ac0b0f527effc96aa8cf15dddf3cb3e"
     },
     {
       "id": "CLD-03",
       "title": "Independent solver correctness and budget audit",
       "priority": 30,
-      "depends": [],
+      "depends": [
+        "CLD-02"
+      ],
       "writes": [
         "tools/test_dps_search_audit.py",
         "docs/DPS-search-audit.md"
       ],
-      "acceptance": "Add deterministic small synthetic cases for waiting, horizon boundaries and bounded-search truncation. Report discrepancies with minimal reproductions; leave core fixes to coordinator."
+      "acceptance": "Add deterministic small synthetic cases for waiting, horizon boundaries and bounded-search truncation. Report discrepancies with minimal reproductions; leave core fixes to coordinator.",
+      "merged_commit": "1253e5bc84e685400e8f0676427f44574916675d"
     },
     {
       "id": "CLD-04",

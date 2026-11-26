@@ -13,11 +13,14 @@ def row(key, path, depends=(), priority=10):
 
 
 class CloudBatchTests(unittest.TestCase):
-    def test_actual_queue_first_wave(self):
+    def test_actual_queue_ready_wave(self):
         tasks = load_queue()
-        self.assertEqual(len(tasks), 10)
-        wave = choose_wave(tasks)
-        self.assertEqual([r["id"] for r in wave], ["CLD-01", "CLD-02", "CLD-03"])
+        completed = {key for key, row in tasks.items() if row.get("merged_commit")}
+        wave = choose_wave(tasks, completed)
+        self.assertLessEqual(len(wave), 3)
+        for row in wave:
+            self.assertNotIn(row["id"], completed)
+            self.assertTrue(set(row["depends"]) <= completed)
         paths = [p.casefold() for r in wave for p in r["writes"]]
         self.assertEqual(len(paths), len(set(paths)))
 

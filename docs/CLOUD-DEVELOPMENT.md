@@ -52,6 +52,22 @@ actual task IDs in Codex; the tool does not launch, monitor or claim cloud jobs.
 Choose three parallel lanes initially, then increase only if task ownership,
 review throughput and usage allowance support it.
 
+## First verified task results
+
+CLD-02 and CLD-03 have been implemented and validated on LEGION using the
+prepared task scopes. They are not Codex Cloud execution receipts.
+The task queue records their actual integration commits. CLD-03 reuses
+CLD-02's fixture enumeration, so it now explicitly depends on CLD-02.
+
+Run the repeatable benchmark:
+
+```bash
+python -B tools/dps_benchmark.py --repeats 5 --warmups 1
+```
+
+The independent audit and measured baseline are documented in
+[the solver audit](DPS-search-audit.md).
+
 ## Integration and review
 
 1. Each worker reads AGENTS.md and its assigned task, changes only owned
