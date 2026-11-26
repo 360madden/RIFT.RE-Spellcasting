@@ -1,0 +1,30 @@
+{
+  "schema_version": 3,
+  "model_kind": "synthetic-simulation",
+  "name": "Periodic refresh and filler",
+  "assumptions": "Hypothetical nonstacking periodic effect ticks every 1000 ms. Refresh replaces pending ticks; ticks at refresh time land first. 100-ms decision grid.",
+  "horizon_ms": 3000,
+  "resource": 1,
+  "resource_max": 1,
+  "abilities": [
+    {
+      "id": "periodic",
+      "damage": 0,
+      "cost": 0,
+      "cooldown_ms": 0,
+      "lockout_ms": 500,
+      "impact_delay_ms": 0,
+      "periodic_damage": 30,
+      "periodic_interval_ms": 1000,
+      "periodic_ticks": 3
+    },
+    {
+      "id": "filler",
+      "damage": 10,
+      "cost": 0,
+      "cooldown_ms": 0,
+      "lockout_ms": 500,
+      "impact_delay_ms": 0
+    }
+  ]
+}

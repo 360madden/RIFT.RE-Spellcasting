@@ -11,7 +11,7 @@ from fractions import Fraction
 import json
 from time import perf_counter_ns
 
-from dps_planner import Step, optimize, validate_model
+from dps_planner import PERIODIC_GRID_MS, Step, optimize, validate_model
 from dps_profile import Scenario, load_profile
 
 
@@ -23,6 +23,9 @@ class Metrics:
     idle_ms: int
     final_resource_milli: int
     wasted_resource_milli: int
+    direct_damage: int = 0
+    periodic_damage: int = 0
+    clipped_periodic_ticks: int = 0
 
 
 def replay(scenario: Scenario, steps):
@@ -38,10 +41,19 @@ def replay(scenario: Scenario, steps):
     cap = capacity * 1000
     amount = initial * 1000
     wasted = damage = occupied = 0
+    periodic_damage = clipped_ticks = 0
+    # Independent explicit tick lists; no use of the optimizer's compressed
+    # next-tick/remaining representation or transition routine.
+    pending = {a.id: [] for a in abilities}
+    grid = PERIODIC_GRID_MS if any(a.periodic_ticks for a in abilities) else 1
     now = 0
 
     def advance(end):
-        nonlocal now, amount, wasted
+        nonlocal now, amount, wasted, periodic_damage
+        for ability_id, times in pending.items():
+            due = [t for t in times if t <= end]
+            periodic_damage += len(due) * by_id[ability_id].periodic_damage
+            pending[ability_id] = [t for t in times if t > end]
         produced = amount + regen * (end - now)
         wasted += max(0, produced - cap)
         amount = min(cap, produced)
@@ -63,6 +75,7 @@ def replay(scenario: Scenario, steps):
         expected_delay = a.lockout_ms if a.impact_delay_ms is None else a.impact_delay_ms
         if (type(impact) is not int or step.start_ms < now or
                 step.start_ms < ready[a.id] or step.start_ms >= horizon or
+                step.start_ms % grid or
                 step.end_ms != step.start_ms + a.lockout_ms or
                 impact != step.start_ms + expected_delay or
                 impact > horizon or step.damage != a.damage):
@@ -73,6 +86,12 @@ def replay(scenario: Scenario, steps):
         amount -= a.cost * 1000
         ready[a.id] = (step.start_ms if a.cooldown_anchor == 'start' else impact) + a.cooldown_ms
         advance(impact)
+        if a.periodic_ticks:
+            # A tick exactly at refresh time was processed above. Count only
+            # canceled old ticks that could have landed inside the encounter.
+            clipped_ticks += sum(t <= horizon for t in pending[a.id])
+            pending[a.id] = [impact + i * a.periodic_interval_ms
+                             for i in range(1, a.periodic_ticks + 1)]
         grant = amount + a.resource_gain * 1000
         wasted += max(0, grant - cap)
         amount = min(cap, grant)
@@ -81,7 +100,8 @@ def replay(scenario: Scenario, steps):
         occupied += clipped_end - step.start_ms
         damage += step.damage
     advance(horizon)
-    return Metrics(damage, len(steps), occupied, horizon - occupied, amount, wasted)
+    return Metrics(damage + periodic_damage, len(steps), occupied, horizon - occupied,
+                   amount, wasted, damage, periodic_damage, clipped_ticks)
 
 
 def baseline(scenario: Scenario, policy):
@@ -98,11 +118,12 @@ def baseline(scenario: Scenario, policy):
     cap = capacity * 1000
     amount = min(cap, initial * 1000 + regen * now)
     ready = {a.id: a.ready_at_ms for a in abilities}
+    grid = PERIODIC_GRID_MS if any(a.periodic_ticks for a in abilities) else 1
     steps = []
     while now < horizon:
         choices = []
         for a in abilities:
-            if a.damage <= 0:
+            if a.damage <= 0 and not a.periodic_ticks:
                 continue
             start = max(now, ready[a.id])
             available = min(cap, amount + regen * (start - now))
@@ -111,9 +132,14 @@ def baseline(scenario: Scenario, policy):
                 if not regen:
                     continue
                 start += (need + regen - 1) // regen
-            end = start + a.lockout_ms
-            if start < horizon and start + a.impact_delay <= horizon:
-                score = a.damage if policy == 'greedy-damage' else Fraction(a.damage, a.lockout_ms)
+            start = ((start + grid - 1) // grid) * grid
+            impact = start + a.impact_delay
+            if start < horizon and impact <= horizon:
+                ticks = min(a.periodic_ticks, (horizon - impact) // a.periodic_interval_ms) if a.periodic_ticks else 0
+                nominal = a.damage + ticks * a.periodic_damage
+                if nominal == 0:
+                    continue
+                score = nominal if policy == 'greedy-damage' else Fraction(nominal, a.lockout_ms)
                 choices.append((start, -score, a.id, a))
         if not choices:
             break
@@ -175,6 +201,8 @@ def evaluate(scenario: Scenario):
         'best_evaluated_policy': selected,
         'best_evaluated_damage': rows[selected]['damage'],
         'optimal_within_model': rows['lookahead']['search_complete'],
+        'search_model': '100-ms-periodic-grid' if any(a.periodic_ticks for a in scenario.abilities)
+                        else 'earliest-feasible-direct-impact',
         'lookahead_vs_best_baseline_damage': predicted - best_baseline,
         'lookahead_vs_best_baseline_percent':
             (predicted - best_baseline) * 100 / best_baseline if best_baseline else None,

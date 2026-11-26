@@ -20,16 +20,16 @@ Work **offline first**, in bounded, timeout-resistant slices. Read-only live obs
 | Priority | Milestone | Deliverable | State |
 | --- | --- | --- | --- |
 | P0 | DPS-001 | Local deterministic finite-horizon planner, synthetic model and regression tests | First implementation complete |
-| P0 | DPS-002 | Versioned encounter and ability profiles, explicit data provenance and modeled assumptions | V1/V2 synthetic profiles implemented |
+| P0 | DPS-002 | Versioned encounter and ability profiles, explicit data provenance and modeled assumptions | V1–V3 synthetic profiles implemented |
 | P0 | DPS-003 | Replay and simulation benchmarks versus simple priority baselines, runtime budget and quality metrics | Initial lab and oracle complete; extend model and larger scenarios next |
-| P1 | DPS-004 | Extend the model for multiple resources, buff/debuff duration, damage-over-time, procs, channels and encounter transitions | Impact/recovery, resource grants and cooldown anchors implemented; periodic effects next |
+| P1 | DPS-004 | Extend the model for multiple resources, buff/debuff duration, damage-over-time, procs, channels and encounter transitions | Impact/recovery, resource grants, cooldown anchors and nonstacking periodic effects implemented; buffs and multiple resources next |
 | P1 | DPS-005 | Evaluate sustained damage, burst windows, resource waste, robustness and specialization-specific strategies | Planned |
 | P1 | DPS-006 | Define and validate observation/decision interface using existing RR2 contracts and recorded evidence | Planned |
 | P1 | DPS-007 | Validate current-build integration and result feedback separately; retain explicit authorization and qualification gates for live action | Not qualified |
 
 **Development rule:** Prioritize measurable DPS-engine improvements and useful simulated benchmarks. Historical executable recovery and native mechanism research are dependency work only when they resolve a specific product requirement. An unavailable historical PE must not prevent development of the independent local planner.
 
-See [local DPS engine direction](docs/DPS-001-local-engine-direction.md) and [profile and benchmark lab](docs/DPS-002-profile-benchmark-lab.md), plus [DPS-004A impact and resource model](docs/DPS-004A-impact-resource-model.md).
+See [local DPS engine direction](docs/DPS-001-local-engine-direction.md) and [profile and benchmark lab](docs/DPS-002-profile-benchmark-lab.md), plus [DPS-004A impact and resource model](docs/DPS-004A-impact-resource-model.md) and [DPS-004B periodic effect model](docs/DPS-004B-periodic-effect-model.md).
 
 ## Supporting patch-recovery checkpoint (November 26)
 

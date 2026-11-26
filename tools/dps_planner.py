@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
+
+PERIODIC_GRID_MS = 100
 import json
 import sys
 
@@ -25,6 +27,9 @@ class Ability:
     impact_delay_ms: int | None = None
     resource_gain: int = 0
     cooldown_anchor: str = 'start'
+    periodic_damage: int = 0
+    periodic_interval_ms: int = 0
+    periodic_ticks: int = 0
 
     @property
     def impact_delay(self):
@@ -83,6 +88,22 @@ def validate_model(abilities, *, horizon_ms, resource, resource_max,
         integer(a.resource_gain, 0, capacity, "resource_gain")
         if a.cooldown_anchor not in ("start", "impact"):
             raise ValueError("cooldown_anchor must be start or impact")
+        integer(a.periodic_damage, 0, 1000000000, "periodic_damage")
+        integer(a.periodic_interval_ms, 0, 30000, "periodic_interval_ms")
+        integer(a.periodic_ticks, 0, 100, "periodic_ticks")
+        if any((a.periodic_damage, a.periodic_interval_ms, a.periodic_ticks)):
+            if not all((a.periodic_damage, a.periodic_interval_ms, a.periodic_ticks)):
+                raise ValueError("periodic fields must be positive together")
+    if any(a.periodic_ticks for a in abilities):
+        # Explicit wait decisions are required with nonstacking refresh.
+        # Restrict this first periodic model to a declared 100-ms grid.
+        times = [horizon, lockout]
+        for a in abilities:
+            times.extend((a.lockout_ms, a.cooldown_ms, a.ready_at_ms,
+                          a.impact_delay, a.periodic_interval_ms))
+        if any(t % PERIODIC_GRID_MS for t in times):
+            raise ValueError("periodic models require 100-ms-aligned timing")
+
     # Stable ordering makes equal-scoring plans reproducible across input order.
     abilities = tuple(sorted(abilities, key=lambda a: a.id))
     return abilities, horizon, initial, capacity, regen, lockout, budget
@@ -97,12 +118,15 @@ def optimize(abilities, *, horizon_ms, resource, resource_max,
     rather than only damage-per-second of the next action. The caller supplies
     impact delay, recovery, cooldown anchor, and any resource grant. Impacts
     at the horizon count; new actions at the horizon do not. This simplified
-    model has no DoT, proc, movement, or stochastic mechanics.
+    model supports periodic refresh on a fixed grid, but no procs, movement,
+    or stochastic mechanics.
     """
     abilities, horizon, initial, capacity, regen, lockout, budget = validate_model(
         abilities, horizon_ms=horizon_ms, resource=resource, resource_max=resource_max,
         regen_per_second=regen_per_second, initial_lockout_ms=initial_lockout_ms,
         state_budget=state_budget)
+    if any(a.periodic_ticks for a in abilities):
+        return _optimize_periodic(abilities, horizon, initial, capacity, regen, lockout, budget)
     cap = capacity * 1000
     expanded = 0
     truncated = False
@@ -157,6 +181,96 @@ def optimize(abilities, *, horizon_ms, resource, resource_max,
 
     damage, steps = search(lockout, refill(initial * 1000, lockout),
                            tuple(max(lockout, a.ready_at_ms) for a in abilities))
+    return Plan(damage, steps, expanded, not truncated)
+
+
+def _optimize_periodic(abilities, horizon, initial, capacity, regen, lockout, budget):
+    """Finite-horizon grid search for nonstacking periodic damage.
+
+    Each ability owns one independent effect. A tick at the same instant
+    as a new impact is counted first, then the remaining old ticks are
+    replaced. The first new tick is one interval after impact. Every
+    decision time is on the validated grid; waiting is a real branch.
+    """
+    cap = capacity * 1000
+    empty = (0, 0)
+    expanded = 0
+    truncated = False
+
+    def refill(amount, elapsed):
+        return min(cap, amount + regen * elapsed)
+
+    def advance(effects, until):
+        damage = 0
+        after = []
+        for a, (next_tick, remaining) in zip(abilities, effects):
+            if remaining and next_tick <= until:
+                due = min(remaining, (until - next_tick) // a.periodic_interval_ms + 1)
+                damage += due * a.periodic_damage
+                remaining -= due
+                next_tick += due * a.periodic_interval_ms
+            after.append((next_tick, remaining) if remaining else empty)
+        return damage, tuple(after)
+
+    def normalize(ready, time):
+        return tuple(max(time, t) for t in ready)
+
+    def better(damage, steps, current, incumbent):
+        if damage != current:
+            return damage > current
+        return bool(incumbent) and (
+            len(steps), steps[-1].end_ms if steps else 0
+        ) < (len(incumbent), incumbent[-1].end_ms)
+
+    @lru_cache(maxsize=50000)
+    def search(now, amount, ready, effects):
+        nonlocal expanded, truncated
+        # Stopping now remains a feasible plan even after budget exhaustion.
+        best_damage, _ = advance(effects, horizon)
+        best_steps = ()
+        if now >= horizon:
+            return best_damage, best_steps
+        if expanded >= budget:
+            truncated = True
+            return best_damage, best_steps
+        expanded += 1
+        for i, a in enumerate(abilities):
+            impact = now + a.impact_delay
+            if now < ready[i] or amount < a.cost * 1000 or impact > horizon:
+                continue
+            end = now + a.lockout_ms
+            clipped_end = min(end, horizon)
+            tick_damage, current = advance(effects, impact)
+            after_impact = min(cap, refill(amount - a.cost * 1000, a.impact_delay)
+                               + a.resource_gain * 1000)
+            if a.periodic_ticks:
+                refreshed = list(current)
+                refreshed[i] = (impact + a.periodic_interval_ms, a.periodic_ticks)
+                current = tuple(refreshed)
+            tail_damage, current = advance(current, clipped_end)
+            updated = list(ready)
+            updated[i] = (now if a.cooldown_anchor == 'start' else impact) + a.cooldown_ms
+            after = refill(after_impact, clipped_end - impact)
+            future, future_steps = search(clipped_end, after, normalize(updated, clipped_end), current)
+            damage = a.damage + tick_damage + tail_damage + future
+            steps = (Step(a.id, now, end, a.damage, impact),) + future_steps
+            if better(damage, steps, best_damage, best_steps):
+                best_damage, best_steps = damage, steps
+
+        # Earliest feasible activation alone is not sufficient for a refresh
+        # model: waiting may let the old effect deliver one more tick.
+        end = now + PERIODIC_GRID_MS
+        tick_damage, current = advance(effects, end)
+        future, steps = search(end, refill(amount, PERIODIC_GRID_MS),
+                               normalize(ready, end), current)
+        damage = tick_damage + future
+        if better(damage, steps, best_damage, best_steps):
+            best_damage, best_steps = damage, steps
+        return best_damage, best_steps
+
+    damage, steps = search(lockout, refill(initial * 1000, lockout),
+                           normalize(tuple(a.ready_at_ms for a in abilities), lockout),
+                           (empty,) * len(abilities))
     return Plan(damage, steps, expanded, not truncated)
 
 
