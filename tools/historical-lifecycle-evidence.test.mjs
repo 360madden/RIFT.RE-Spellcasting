@@ -2,8 +2,7 @@
 // summaries. These are committed derived records, not newly decoded raw trials.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {execFileSync} from 'node:child_process';
-import {createHash} from 'node:crypto';
+import {readPinnedGitJson} from './pinned-git-json.mjs';
 import {join} from 'node:path';
 import {classifyCastEvidence} from './classify-cast-evidence.mjs';
 
@@ -19,12 +18,7 @@ const originalBuild='7c356c9dde9e12fcbff3c08d953b0630b48b1510a0ffb36e4ec164606e7
 const sumDamage=rows=>rows.reduce((n,e)=>n+(e.kind==='damage'&&Number.isFinite(e.damage)?e.damage:0),0);
 function load(role){
   const [name,pin]=sources[role];
-  const bytes=execFileSync('git',['-C',join(root,'rre'),'show',commit+':docs/REA-RIFT-SPELLCASTING-'+name],
-    {timeout:10000,maxBuffer:4*1024*1024,windowsHide:true});
-  assert.equal(createHash('sha256').update(bytes).digest('hex'),pin,role);
-  const doc=JSON.parse(bytes);
-  assert.equal(doc.schemaVersion,1,role);
-  return doc;
+  return readPinnedGitJson(join(root,'rre'),{commit,path:'docs/REA-RIFT-SPELLCASTING-'+name,sha256:pin});
 }
 
 test('historical ranged lifecycle and clock summaries reconcile without implying latency',opts,()=>{

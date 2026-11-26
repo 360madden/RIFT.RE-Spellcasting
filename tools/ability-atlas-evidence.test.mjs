@@ -3,8 +3,7 @@
 // conversion can change its SHA. Read the pinned committed blobs instead.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {execFileSync} from 'node:child_process';
-import {createHash} from 'node:crypto';
+import {readPinnedGitJson} from './pinned-git-json.mjs';
 import {join} from 'node:path';
 
 const root=process.env.RIFT_EVIDENCE_ROOT;
@@ -20,12 +19,7 @@ const sources={
 
 function load(role){
   const [name,pin]=sources[role];
-  const bytes=execFileSync('git',['-C',join(root,'rre'),'show',commit+':'+prefix+name],
-    {timeout:10000,maxBuffer:4*1024*1024,windowsHide:true});
-  assert.equal(createHash('sha256').update(bytes).digest('hex'),pin,role);
-  const doc=JSON.parse(bytes);
-  assert.equal(doc.schemaVersion,1,role);
-  return doc;
+  return readPinnedGitJson(join(root,'rre'),{commit,path:prefix+name,sha256:pin});
 }
 
 function index(rows){

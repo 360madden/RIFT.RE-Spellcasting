@@ -28,13 +28,14 @@ existing exact-build native verifiers. Do not replace that gate.
   exact-build tests. Keep build-specific research separate.
 - Details and the 30-step checkpoint: [PATCH-RECOVERY-CYCLE-30](docs/PATCH-RECOVERY-CYCLE-30.md).
 
-## Latest research checkpoint — SP-007I
+## Latest research checkpoint — SP-007J
 
 - [SP-007C](docs/SP-007C-historical-verifier-hardening.md) consolidates the exact-build PE parser without relaxing the historical digest.
 - [SP-007D](docs/SP-007D-cast-trial-clock-validation.md), [SP-007E](docs/SP-007E-target-aware-cast-evidence.md), and [SP-007F](docs/SP-007F-session-pin-clock-coverage.md) strengthen offline trial, target, and session/clock coverage checks.
 - [SP-007G](docs/SP-007G-current-build-evidence-baseline.md) independently verifies eight saved RR2 receipt hashes and their recorded current-build no-target baseline. This is candidate-only observation evidence, not a cast trial.
 - [SP-007H](docs/SP-007H-ability-atlas-evidence-coverage.md) revalidates the exact committed SC-103 atlas source chain and computes historical List/Detail coverage without inferring eligibility.
 - [SP-007I](docs/SP-007I-historical-lifecycle-reconciliation.md) reconciles three pinned historical lifecycle, clock and attribution summaries, including the distinct legacy-only melee and later normalized replay verdicts.
+- [SP-007J](docs/SP-007J-evidence-verification-portability.md) consolidates pinned Git JSON reads and removes the Windows privilege-dependent containment-test skip. The 34 historical PE tests remain blocked by unavailable source bytes.
 - Next: obtain new, source-qualified casting observation evidence under the existing approval gate, or recover the original research PE. Do not repeat the same artifact search or interpret buffered source frames as calibrated UTC samples.
 
 ## Milestones

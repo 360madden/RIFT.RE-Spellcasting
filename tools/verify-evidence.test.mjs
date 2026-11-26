@@ -66,19 +66,14 @@ test('source drift and missing sources fail closed',async t=>{
   await rm(join(sibling,'docs','report.md'));
   await assert.rejects(verifySources(index(),sibling),{code:'ENOENT'});
 });
-test('realpath containment refuses an outside source',async t=>{
+test('realpath containment refuses an outside directory link',async t=>{
   const {root,sibling}=await fixture(t);
-  const target=join(root,'outside.md');
-  await writeFile(target,source);
-  await rm(join(sibling,'docs','report.md'));
-  try {
-    await symlink(target,join(sibling,'docs','report.md'),'file');
-  } catch(error) {
-    if(process.platform==='win32' && ['EPERM','EACCES'].includes(error.code)) {
-      t.skip('Windows runner does not allow symlinks');
-      return;
-    }
-    throw error;
-  }
+  // Windows directory junctions exercise realpath containment without
+  // requiring the privileged file-symlink creation capability.
+  const target=join(root,'outside');
+  await mkdir(target);
+  await writeFile(join(target,'report.md'),source);
+  await rm(join(sibling,'docs'),{recursive:true});
+  await symlink(target,join(sibling,'docs'),process.platform==='win32'?'junction':'dir');
   await assert.rejects(verifySources(index(),sibling),/source escaped repository/);
 });
