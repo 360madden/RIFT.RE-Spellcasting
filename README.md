@@ -78,6 +78,23 @@ The portable GitHub Actions workflow runs synthetic Python and Node tests
 on Windows and Linux without an installed game or sibling repositories.
 Historical PE tests remain opt-in and are reported as skipped in CI.
 
+### Combined recovery report
+
+Use one read-only check to audit the independently pinned reference and
+current archives, bind a completed Update Helper capture, and compare the
+builds. For example, the November 26 LEGION capture and verified baseline:
+
+```powershell
+python -B tools/recovery_report.py --candidate 'C:\Program Files (x86)\Glyph\Games\RIFT\Live\rift_x64.exe' --archive-dir 'C:\work\rift-build-archives' --reference-sha df954b798331e18359be62a31cc74b49fc3f50b87385ebb080a5448256322c01 --manifest 'C:\work\Update Helper\riftworld-20261126-01-after-a.json' --manifest-sha a4331e85bc7a4a84c421368daf09bfbf4208ee7ffb793b5816a48fbcd7b2742c --expected-host LEGION
+```
+
+Exit 0 = REVIEW_READY_UNQUALIFIED (both required copies and manifest
+identity verified); exit 3 = INCOMPLETE_UNQUALIFIED (missing archive);
+exit 2 = BLOCKED (invalid input, integrity failure or drift). A ready report
+is not native/runtime qualification. Use fresh capture evidence for later
+updates, not the example manifest if the executable changes. See the
+[30-step recovery checkpoint](docs/PATCH-RECOVERY-CYCLE-30.md).
+
 ### Shared Update Helper interoperability
 
 The separate Update Helper utility owns whole-install captures and manifest

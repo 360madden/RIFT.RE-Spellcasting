@@ -1,7 +1,9 @@
 # RIFT.RE-Spellcasting — evidence-first development roadmap
 
-**Updated:** 2026-11-16 (America/New_York)  
-**Primary host:** AMD-DESKTOP  
+**Updated:** 2026-11-26 (Asia/Manila)
+
+**Active development host:** LEGION (verify hostname each session; older research may originate on AMD-DESKTOP)
+
 **Repository:** `C:\work\RIFT.RE-Spellcasting`  
 **Related source of record:** `C:\work\rre` (independent Git repository)
 
@@ -10,6 +12,21 @@
 Produce a reproducible, source-qualified explanation of RIFT spell discovery, eligibility, client requests, queueing, cooldowns, cast/channel timing, interruption and effects. This project owns its *own* synthesis, offline experiments and reproducibility tooling; existing RRE/REA/RR2 findings remain in their original repositories. Do not fork RRECollector, reimplement its saved-variable parser, or treat API-known spells as all learnable spells.
 
 Work **offline first**, in bounded, timeout-resistant slices. Read-only live observations require fresh host/build/session evidence. Do not interact with VMware labs. No live casting, movement, reload, addon deployment or native process control is necessary for current milestones.
+
+## Current patch-recovery priority (November 26)
+
+The original research PE is not available locally. LEGION's independently
+preserved current build is SHA-256 df954b798331e18359be62a31cc74b49fc3f50b87385ebb080a5448256322c01.
+The historical SHA 1935a05c... remains the only qualified source for the
+existing exact-build native verifiers. Do not replace that gate.
+
+- Complete: portable cloud validation, current-build archive, reviewed
+  Update Helper integration and strict sibling-source verification.
+- Complete: combined read-only recovery report; current reference returns
+  REVIEW_READY_UNQUALIFIED, historical reference returns INCOMPLETE_UNQUALIFIED.
+- Next: recover the original archive when available, then rerun historical
+  exact-build tests. Keep build-specific research separate.
+- Details and the 30-step checkpoint: [PATCH-RECOVERY-CYCLE-30](docs/PATCH-RECOVERY-CYCLE-30.md).
 
 ## Milestones
 
