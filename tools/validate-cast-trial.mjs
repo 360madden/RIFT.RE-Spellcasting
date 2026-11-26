@@ -4,12 +4,15 @@ import { validateClockPairs } from './validate-clock-pairs.mjs';
 import { classifyCastEvidence } from './classify-cast-evidence.mjs';
 
 const reject = reason => ({ accepted: false, reason, latencyQualified: false });
-const nonempty = value => typeof value === 'string' && value.length > 0;
-export function validateCastTrial(input) {
+const nonempty = value => typeof value === 'string' && value.trim().length > 0;
+// The caller selects the independently known evidence host. Preserve the old
+// AMD-DESKTOP default for historical consumers; do not trust the input to select it.
+export function validateCastTrial(input, { expectedHost = 'AMD-DESKTOP' } = {}) {
   if (!input || !nonempty(input.sessionId) || !input.session ||
       !['host', 'buildSha256', 'processStart', 'playerId'].every(k => nonempty(input.session[k])))
     return reject('session-identity-required');
-  if (input.session.host !== 'AMD-DESKTOP') return reject('wrong-host');
+  if (!['AMD-DESKTOP', 'LEGION'].includes(expectedHost)) return reject('unsupported-expected-host');
+  if (input.session.host !== expectedHost) return reject('wrong-host');
   if (!input.identity || !['casterId', 'abilityId', 'targetId'].every(k => nonempty(input.identity[k])))
     return reject('exact-cast-identity-required');
   if (input.identity.casterId !== input.session.playerId) return reject('caster-session-mismatch');
@@ -30,8 +33,14 @@ export function validateCastTrial(input) {
   const actualDomains = new Set(observedEvents.map(e => e.clockDomain));
   if (actualDomains.size > 1) return reject('mixed-clock-events-require-independent-calibration');
   if (!verdict.observed.attempt) return reject('input-attempt-not-observed');
+  // A trial describes one recorded attempt, not an arbitrary batch of casts.
+  // Temporal ordering is a necessary structural condition, never causal proof.
+  const attempts = observedEvents.filter(e => e.kind === 'input_attempt');
+  if (attempts.length !== 1) return reject('ambiguous-multiple-input-attempts');
+  if (observedEvents.some(e => e.kind !== 'input_attempt' && e.time < attempts[0].time))
+    return reject('outcome-precedes-attempt');
   return { accepted: true, reason: 'structural-trial-only', sessionId: input.sessionId,
-    clockPairCount: pairGate.pairCount, observed: verdict.observed,
+    evidenceHost: expectedHost, clockPairCount: pairGate.pairCount, observed: verdict.observed,
     latencyQualified: false, serverAcknowledgementQualified: false,
     limitations: 'No clock calibration, live input processing, request acceptance, or causal latency established.' };
 }

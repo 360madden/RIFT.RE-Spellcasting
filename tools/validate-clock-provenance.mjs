@@ -2,7 +2,7 @@
 import { validateClockPairs } from './validate-clock-pairs.mjs';
 
 const fail = reason => ({ accepted: false, reason, producerQualified: false, latencyQualified: false });
-const named = x => typeof x === 'string' && x.length > 0;
+const named = x => typeof x === 'string' && x.trim().length > 0;
 export function validateClockProvenance(input) {
   const structural = validateClockPairs(input);
   if (!structural.accepted) return fail('clock-' + structural.reason);

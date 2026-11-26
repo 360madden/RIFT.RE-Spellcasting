@@ -41,3 +41,10 @@ test('rejects nonmonotonic producer sequences and malformed structural pairs', (
   b.pairs[1].utcAfter = '2026-11-16T20:00:00.060Z';
   assert.match(validateClockProvenance(b).reason, /clock-non-monotonic/);
 });
+
+test('whitespace-only inline producer identifiers are rejected', () => {
+  const a=fixture(); a.pairs[0].provenance.sourceId=' ';
+  assert.equal(validateClockProvenance(a).reason,'unqualified-read-provenance-0');
+  const b=fixture(); b.pairs[0].provenance.operationId=' ';
+  assert.equal(validateClockProvenance(b).reason,'unqualified-read-provenance-0');
+});
