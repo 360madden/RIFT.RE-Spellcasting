@@ -51,7 +51,7 @@ def replay(scenario: Scenario, steps):
     advance(lockout)
     occupied += lockout
     steps = tuple(steps)
-    if len(steps) > horizon // 100:
+    if len(steps) > (horizon + 99) // 100:
         raise ValueError('too many actions for horizon')
     for step in steps:
         if not isinstance(step, Step) or step.ability_id not in by_id:
@@ -59,17 +59,26 @@ def replay(scenario: Scenario, steps):
         a = by_id[step.ability_id]
         if any(type(v) is not int for v in (step.start_ms, step.end_ms, step.damage)):
             raise ValueError('step fields must be integer')
-        if (step.start_ms < now or step.start_ms < ready[a.id] or
+        impact = step.end_ms if step.impact_ms is None else step.impact_ms
+        expected_delay = a.lockout_ms if a.impact_delay_ms is None else a.impact_delay_ms
+        if (type(impact) is not int or step.start_ms < now or
+                step.start_ms < ready[a.id] or step.start_ms >= horizon or
                 step.end_ms != step.start_ms + a.lockout_ms or
-                step.end_ms > horizon or step.damage != a.damage):
+                impact != step.start_ms + expected_delay or
+                impact > horizon or step.damage != a.damage):
             raise ValueError('step violates time, cooldown or damage model')
         advance(step.start_ms)
         if amount < a.cost * 1000:
             raise ValueError('step exceeds available resource')
         amount -= a.cost * 1000
-        ready[a.id] = step.start_ms + a.cooldown_ms
-        advance(step.end_ms)
-        occupied += a.lockout_ms
+        ready[a.id] = (step.start_ms if a.cooldown_anchor == 'start' else impact) + a.cooldown_ms
+        advance(impact)
+        grant = amount + a.resource_gain * 1000
+        wasted += max(0, grant - cap)
+        amount = min(cap, grant)
+        clipped_end = min(step.end_ms, horizon)
+        advance(clipped_end)
+        occupied += clipped_end - step.start_ms
         damage += step.damage
     advance(horizon)
     return Metrics(damage, len(steps), occupied, horizon - occupied, amount, wasted)
@@ -103,18 +112,20 @@ def baseline(scenario: Scenario, policy):
                     continue
                 start += (need + regen - 1) // regen
             end = start + a.lockout_ms
-            if end <= horizon:
+            if start < horizon and start + a.impact_delay <= horizon:
                 score = a.damage if policy == 'greedy-damage' else Fraction(a.damage, a.lockout_ms)
                 choices.append((start, -score, a.id, a))
         if not choices:
             break
         start, _, _, a = min(choices)
         end = start + a.lockout_ms
+        impact = start + a.impact_delay
         amount = min(cap, amount + regen * (start - now)) - a.cost * 1000
-        amount = min(cap, amount + regen * a.lockout_ms)
-        ready[a.id] = start + a.cooldown_ms
-        steps.append(Step(a.id, start, end, a.damage))
-        now = end
+        amount = min(cap, amount + regen * a.impact_delay + a.resource_gain * 1000)
+        amount = min(cap, amount + regen * (min(end, horizon) - impact))
+        ready[a.id] = (start if a.cooldown_anchor == 'start' else impact) + a.cooldown_ms
+        steps.append(Step(a.id, start, end, a.damage, impact))
+        now = min(end, horizon)
     return tuple(steps)
 
 
@@ -155,6 +166,7 @@ def evaluate(scenario: Scenario):
     # Never label an incomplete search as an optimal solution.
     return {
         'schema_version': 1,
+        'profile_schema_version': scenario.profile_version,
         'model_kind': 'synthetic-simulation',
         'name': scenario.name,
         'assumptions': scenario.assumptions,

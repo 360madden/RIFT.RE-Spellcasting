@@ -27,11 +27,16 @@ def exhaustive_grid(abilities, horizon, initial, capacity, regen, lockout):
         best = visit(now + tick, min(capacity, resource + regen // 10), ready)
         for i, a in enumerate(abilities):
             end = now + a.lockout_ms
-            if now < ready[i] or resource < a.cost or end > horizon:
+            delay = a.lockout_ms if a.impact_delay_ms is None else a.impact_delay_ms
+            assert delay % tick == 0
+            impact = now + delay
+            if now < ready[i] or resource < a.cost or impact > horizon:
                 continue
             updated = list(ready)
-            updated[i] = now + a.cooldown_ms
-            after = min(capacity, resource - a.cost + regen * a.lockout_ms // 1000)
+            updated[i] = (now if a.cooldown_anchor == 'start' else impact) + a.cooldown_ms
+            after = min(capacity, resource - a.cost + regen * delay // 1000)
+            after = min(capacity, after + a.resource_gain)
+            after = min(capacity, after + regen * (a.lockout_ms - delay) // 1000)
             best = max(best, a.damage + visit(end, after, tuple(updated)))
         return best
 
@@ -54,6 +59,33 @@ class OracleTests(unittest.TestCase):
                 rng.randint(0, 3) * 100) for i in range(rng.randint(1, 4)))
             scenario = Scenario('oracle', 'synthetic grid', abilities,
                                 horizon, initial, capacity, regen, lockout)
+            plan = optimize(abilities, **scenario.model_kwargs())
+            expected = exhaustive_grid(abilities, horizon, initial, capacity, regen, lockout)
+            with self.subTest(case=case):
+                self.assertTrue(plan.search_complete)
+                self.assertEqual(plan.damage, expected)
+                self.assertEqual(replay(scenario, plan.steps).damage, expected)
+
+    def test_advanced_model_against_exhaustive_wait_oracle(self):
+        rng = random.Random(20261128)
+        for case in range(80):
+            horizon = rng.randint(3, 10) * 100
+            capacity = rng.randint(1, 5)
+            initial = rng.randint(0, capacity)
+            regen = rng.choice([0, 10])
+            lockout = rng.randint(0, 2) * 100
+            abilities = []
+            for i in range(rng.randint(1, 4)):
+                recovery = rng.randint(1, 3) * 100
+                abilities.append(Ability(
+                    str(i), rng.randint(0, 25), rng.randint(0, capacity),
+                    rng.randint(0, 5) * 100, recovery, rng.randint(0, 3) * 100,
+                    rng.randint(0, recovery // 100) * 100, rng.randint(0, capacity),
+                    rng.choice(['start', 'impact'])))
+            abilities = tuple(abilities)
+            scenario = Scenario('advanced oracle', 'synthetic grid', abilities,
+                                horizon, initial, capacity, regen, lockout,
+                                profile_version=2)
             plan = optimize(abilities, **scenario.model_kwargs())
             expected = exhaustive_grid(abilities, horizon, initial, capacity, regen, lockout)
             with self.subTest(case=case):

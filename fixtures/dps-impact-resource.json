@@ -1,0 +1,29 @@
+{
+  "schema_version": 2,
+  "model_kind": "synthetic-simulation",
+  "name": "Impact and resource generation",
+  "assumptions": "Hypothetical resource generator and instant-impact spender; recovery can continue past encounter end. No live RIFT values.",
+  "horizon_ms": 1800,
+  "resource": 0,
+  "resource_max": 5,
+  "abilities": [
+    {
+      "id": "generator",
+      "damage": 0,
+      "cost": 0,
+      "cooldown_ms": 0,
+      "lockout_ms": 500,
+      "impact_delay_ms": 0,
+      "resource_gain": 5
+    },
+    {
+      "id": "spender",
+      "damage": 80,
+      "cost": 5,
+      "cooldown_ms": 750,
+      "lockout_ms": 750,
+      "impact_delay_ms": 0,
+      "cooldown_anchor": "impact"
+    }
+  ]
+}

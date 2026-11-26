@@ -20,6 +20,7 @@ REQUIRED = {
 }
 OPTIONAL = {'regen_per_second', 'initial_lockout_ms', 'state_budget'}
 ABILITY_FIELDS = {'id', 'damage', 'cost', 'cooldown_ms', 'lockout_ms'}
+V2_FIELDS = {'impact_delay_ms', 'resource_gain', 'cooldown_anchor'}
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,7 @@ class Scenario:
     regen_per_second: int = 0
     initial_lockout_ms: int = 0
     state_budget: int = 20000
+    profile_version: int = 1
 
     def model_kwargs(self):
         return {
@@ -56,7 +58,7 @@ def object_fields(value, required, optional, label):
 
 def parse_profile(value):
     object_fields(value, REQUIRED, OPTIONAL, 'profile')
-    if type(value['schema_version']) is not int or value['schema_version'] != 1:
+    if type(value['schema_version']) is not int or value['schema_version'] not in (1, 2):
         raise ValueError('unsupported profile schema')
     if value['model_kind'] != 'synthetic-simulation':
         raise ValueError('only synthetic simulation profiles are supported')
@@ -68,14 +70,16 @@ def parse_profile(value):
     if not isinstance(rows, list) or not 1 <= len(rows) <= 32:
         raise ValueError('profile requires one to 32 abilities')
     abilities = []
+    version = value['schema_version']
+    allowed = {'ready_at_ms'} | (V2_FIELDS if version == 2 else set())
     for row in rows:
-        object_fields(row, ABILITY_FIELDS, {'ready_at_ms'}, 'ability')
+        object_fields(row, ABILITY_FIELDS, allowed, 'ability')
         abilities.append(Ability(**row))
     kwargs = {key: value[key] for key in (
         'horizon_ms', 'resource', 'resource_max', *sorted(OPTIONAL)
     ) if key in value}
     canonical, *_ = validate_model(abilities, **kwargs)
-    return Scenario(value['name'], value['assumptions'], canonical, **kwargs)
+    return Scenario(value['name'], value['assumptions'], canonical, profile_version=version, **kwargs)
 
 
 def unique_pairs(pairs):

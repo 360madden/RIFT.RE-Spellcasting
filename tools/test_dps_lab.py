@@ -24,10 +24,23 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(p.horizon_ms, 2000)
 
     def test_no_silent_unknown_fields_or_model_kind(self):
-        for change in ({'schema_version': True}, {'schema_version': 2},
+        for change in ({'schema_version': True}, {'schema_version': 3},
                        {'model_kind': 'live'}, {'unknown': 5}, {'name': ''}):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 parse_profile({**self.raw, **change})
+
+    def test_version_two_advanced_fields_are_explicit(self):
+        p = load_profile(FIXTURES / 'dps-impact-resource.json')
+        self.assertEqual(p.profile_version, 2)
+        self.assertEqual(p.abilities[0].resource_gain, 5)
+        rows = [{**self.raw['abilities'][0], 'resource_gain': 1}]
+        with self.assertRaises(ValueError):
+            parse_profile({**self.raw, 'abilities': rows})
+        for change in ({'impact_delay_ms': 1001}, {'resource_gain': 101},
+                       {'cooldown_anchor': 'unknown'}, {'impact_delay_ms': True}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                parse_profile({**self.raw, 'schema_version': 2,
+                               'abilities': [{**self.raw['abilities'][0], **change}]})
 
     def test_bad_ability_fields_and_duplicate_ids(self):
         rows = self.raw['abilities']

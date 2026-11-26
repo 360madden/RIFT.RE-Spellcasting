@@ -3,7 +3,8 @@
 The core consumes explicit numerical assumptions, explores feasible sequences,
 and returns a simulated plan. No live game access, input, or network dependency.
 All times are integer milliseconds; resources are scaled internally to preserve
-fractional regeneration exactly. Damage is credited when an action completes.
+fractional regeneration exactly. Damage and resource grants occur at a modeled
+impact instant, which can precede the end of action recovery.
 """
 from __future__ import annotations
 
@@ -21,6 +22,13 @@ class Ability:
     cooldown_ms: int
     lockout_ms: int
     ready_at_ms: int = 0
+    impact_delay_ms: int | None = None
+    resource_gain: int = 0
+    cooldown_anchor: str = 'start'
+
+    @property
+    def impact_delay(self):
+        return self.lockout_ms if self.impact_delay_ms is None else self.impact_delay_ms
 
 
 @dataclass(frozen=True)
@@ -29,6 +37,7 @@ class Step:
     start_ms: int
     end_ms: int
     damage: int
+    impact_ms: int | None = None
 
 
 @dataclass(frozen=True)
@@ -69,6 +78,11 @@ def validate_model(abilities, *, horizon_ms, resource, resource_max,
         integer(a.cooldown_ms, 0, 3600000, "cooldown_ms")
         integer(a.lockout_ms, 100, 60000, "lockout_ms")
         integer(a.ready_at_ms, 0, 3600000, "ready_at_ms")
+        if a.impact_delay_ms is not None:
+            integer(a.impact_delay_ms, 0, a.lockout_ms, "impact_delay_ms")
+        integer(a.resource_gain, 0, capacity, "resource_gain")
+        if a.cooldown_anchor not in ("start", "impact"):
+            raise ValueError("cooldown_anchor must be start or impact")
     # Stable ordering makes equal-scoring plans reproducible across input order.
     abilities = tuple(sorted(abilities, key=lambda a: a.id))
     return abilities, horizon, initial, capacity, regen, lockout, budget
@@ -80,9 +94,10 @@ def optimize(abilities, *, horizon_ms, resource, resource_max,
 
     Each candidate can be scheduled at its earliest feasible start, including
     waiting for its cooldown or sufficient resource. Search compares sequences
-    rather than only damage-per-second of the next action. Cooldowns start at
-    action start in this model; lockout covers cast/GCD as supplied by caller.
-    This simplified model has no DoT, proc, movement, or stochastic mechanics.
+    rather than only damage-per-second of the next action. The caller supplies
+    impact delay, recovery, cooldown anchor, and any resource grant. Impacts
+    at the horizon count; new actions at the horizon do not. This simplified
+    model has no DoT, proc, movement, or stochastic mechanics.
     """
     abilities, horizon, initial, capacity, regen, lockout, budget = validate_model(
         abilities, horizon_ms=horizon_ms, resource=resource, resource_max=resource_max,
@@ -113,17 +128,23 @@ def optimize(abilities, *, horizon_ms, resource, resource_max,
                 start += (cost - available + regen - 1) // regen
                 available = refill(amount, start - now)
             end = start + a.lockout_ms
-            if end > horizon or available < cost:
+            impact = start + a.impact_delay
+            if start >= horizon or impact > horizon or available < cost:
                 continue
-            # Normalize expired cooldowns to the current simulation instant,
-            # preventing equivalent histories from creating distinct states.
+            # An impact can occur before recovery finishes. A last impact
+            # inside the encounter counts even if recovery extends past it.
             updated = list(ready)
-            updated[i] = start + a.cooldown_ms
+            updated[i] = (start if a.cooldown_anchor == "start" else impact) + a.cooldown_ms
             updated = tuple(max(end, t) for t in updated)
-            after = refill(available - cost, a.lockout_ms)
-            future_damage, future_steps = search(end, after, updated)
+            after_impact = min(cap, refill(available - cost, a.impact_delay)
+                               + a.resource_gain * 1000)
+            after = refill(after_impact, a.lockout_ms - a.impact_delay)
+            if end <= horizon:
+                future_damage, future_steps = search(end, after, updated)
+            else:
+                future_damage, future_steps = 0, ()
             value = a.damage + future_damage
-            steps = (Step(a.id, start, end, a.damage),) + future_steps
+            steps = (Step(a.id, start, end, a.damage, impact),) + future_steps
             # Prefer fewer actions for equal damage, then earlier completion.
             # Stable ability order resolves any remaining ties.
             if value > best_damage or (
