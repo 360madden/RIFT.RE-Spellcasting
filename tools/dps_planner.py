@@ -17,6 +17,14 @@ import sys
 
 
 @dataclass(frozen=True)
+class ResourcePool:
+    id: str
+    initial: int
+    capacity: int
+    regen_per_second: int = 0
+
+
+@dataclass(frozen=True)
 class Ability:
     id: str
     damage: int
@@ -33,6 +41,8 @@ class Ability:
     effect_duration_ms: int = 0
     self_bonus_bps: int = 0
     target_bonus_bps: int = 0
+    extra_costs: tuple[tuple[str, int], ...] = ()
+    extra_gains: tuple[tuple[str, int], ...] = ()
 
     @property
     def impact_delay(self):
@@ -62,8 +72,42 @@ def integer(value, low, high, name):
     return value
 
 
+def validate_resources(extra_resources):
+    """Canonicalize up to three additional independently capped pools."""
+    if not isinstance(extra_resources, (tuple, list)) or len(extra_resources) > 3:
+        raise ValueError("up to three additional resource pools are supported")
+    pools = {}
+    for pool in extra_resources:
+        if (not isinstance(pool, ResourcePool) or not isinstance(pool.id, str)
+                or not pool.id.strip() or len(pool.id) > 64
+                or pool.id == "primary" or pool.id in pools):
+            raise ValueError("invalid or duplicate additional resource ID")
+        integer(pool.capacity, 1, 100000, "resource capacity")
+        integer(pool.initial, 0, pool.capacity, "resource initial")
+        integer(pool.regen_per_second, 0, 100000, "resource regeneration")
+        pools[pool.id] = pool
+    return tuple(pools[k] for k in sorted(pools))
+
+
+def resource_amounts(entries, pools):
+    """Resolve exact pool IDs and reject duplicate or unknown resource entries."""
+    if not isinstance(entries, tuple):
+        raise ValueError("resource entries must be a tuple")
+    known = {p.id: p.capacity for p in pools}
+    result = {}
+    for entry in entries:
+        if not isinstance(entry, tuple) or len(entry) != 2:
+            raise ValueError("invalid resource entry")
+        key, amount = entry
+        if not isinstance(key, str) or key not in known or key in result:
+            raise ValueError("unknown or duplicate additional resource ID")
+        result[key] = integer(amount, 0, known[key], "resource amount")
+    return tuple(result.get(p.id, 0) for p in pools)
+
+
 def validate_model(abilities, *, horizon_ms, resource, resource_max,
-                   regen_per_second=0, initial_lockout_ms=0, state_budget=20000):
+                   regen_per_second=0, initial_lockout_ms=0, state_budget=20000,
+                   extra_resources=()):
     """Validate and canonicalize model parameters without doing a search."""
     horizon = integer(horizon_ms, 100, 30000, "horizon_ms")
     capacity = integer(resource_max, 1, 100000, "resource_max")
@@ -74,6 +118,7 @@ def validate_model(abilities, *, horizon_ms, resource, resource_max,
     abilities = tuple(abilities)
     if not 1 <= len(abilities) <= 32:
         raise ValueError("one to 32 modeled abilities required")
+    pools = validate_resources(extra_resources)
     seen = set()
     for a in abilities:
         if not isinstance(a, Ability) or not isinstance(a.id, str) or not a.id.strip() or len(a.id) > 128:
@@ -89,6 +134,8 @@ def validate_model(abilities, *, horizon_ms, resource, resource_max,
         if a.impact_delay_ms is not None:
             integer(a.impact_delay_ms, 0, a.lockout_ms, "impact_delay_ms")
         integer(a.resource_gain, 0, capacity, "resource_gain")
+        resource_amounts(a.extra_costs, pools)
+        resource_amounts(a.extra_gains, pools)
         if a.cooldown_anchor not in ("start", "impact"):
             raise ValueError("cooldown_anchor must be start or impact")
         integer(a.periodic_damage, 0, 1000000000, "periodic_damage")
@@ -102,7 +149,7 @@ def validate_model(abilities, *, horizon_ms, resource, resource_max,
         integer(a.target_bonus_bps, 0, 10000, "target_bonus_bps")
         if bool(a.effect_duration_ms) != bool(a.self_bonus_bps or a.target_bonus_bps):
             raise ValueError("timed modifier requires duration and bonus")
-    if any(a.periodic_ticks or a.effect_duration_ms for a in abilities):
+    if pools or any(a.periodic_ticks or a.effect_duration_ms for a in abilities):
         # Explicit wait decisions are required with nonstacking refresh.
         # Restrict this first periodic model to a declared 100-ms grid.
         times = [horizon, lockout]
@@ -110,7 +157,7 @@ def validate_model(abilities, *, horizon_ms, resource, resource_max,
             times.extend((a.lockout_ms, a.cooldown_ms, a.ready_at_ms,
                           a.impact_delay, a.periodic_interval_ms, a.effect_duration_ms))
         if any(t % PERIODIC_GRID_MS for t in times):
-            raise ValueError("timed effect models require 100-ms-aligned timing")
+            raise ValueError("timed effect and multi-resource models require 100-ms-aligned timing")
 
     # Stable ordering makes equal-scoring plans reproducible across input order.
     abilities = tuple(sorted(abilities, key=lambda a: a.id))
@@ -118,7 +165,8 @@ def validate_model(abilities, *, horizon_ms, resource, resource_max,
 
 
 def optimize(abilities, *, horizon_ms, resource, resource_max,
-             regen_per_second=0, initial_lockout_ms=0, state_budget=20000):
+             regen_per_second=0, initial_lockout_ms=0, state_budget=20000,
+             extra_resources=()):
     """Evaluate an explicit finite-horizon damage model.
 
     Each candidate can be scheduled at its earliest feasible start, including
@@ -132,9 +180,10 @@ def optimize(abilities, *, horizon_ms, resource, resource_max,
     abilities, horizon, initial, capacity, regen, lockout, budget = validate_model(
         abilities, horizon_ms=horizon_ms, resource=resource, resource_max=resource_max,
         regen_per_second=regen_per_second, initial_lockout_ms=initial_lockout_ms,
-        state_budget=state_budget)
-    if any(a.periodic_ticks or a.effect_duration_ms for a in abilities):
-        return _optimize_timed(abilities, horizon, initial, capacity, regen, lockout, budget)
+        state_budget=state_budget, extra_resources=extra_resources)
+    pools = validate_resources(extra_resources)
+    if pools or any(a.periodic_ticks or a.effect_duration_ms for a in abilities):
+        return _optimize_timed(abilities, horizon, initial, capacity, regen, lockout, budget, pools)
     cap = capacity * 1000
     expanded = 0
     truncated = False
@@ -192,7 +241,7 @@ def optimize(abilities, *, horizon_ms, resource, resource_max,
     return Plan(damage, steps, expanded, not truncated)
 
 
-def _optimize_timed(abilities, horizon, initial, capacity, regen, lockout, budget):
+def _optimize_timed(abilities, horizon, initial, capacity, regen, lockout, budget, pools=()):
     """Finite-horizon grid search for periodic damage and timed modifiers.
 
     Each ability owns one independent effect. A tick at the same instant
@@ -200,13 +249,23 @@ def _optimize_timed(abilities, horizon, initial, capacity, regen, lockout, budge
     replaced. The first new tick is one interval after impact. Every
     decision time is on the validated grid; waiting is a real branch.
     """
-    cap = capacity * 1000
+    caps = (capacity * 1000,) + tuple(p.capacity * 1000 for p in pools)
+    rates = (regen,) + tuple(p.regen_per_second for p in pools)
+    costs = tuple(tuple(v * 1000 for v in (a.cost,) + resource_amounts(a.extra_costs, pools))
+                  for a in abilities)
+    gains = tuple(tuple(v * 1000 for v in (a.resource_gain,) + resource_amounts(a.extra_gains, pools))
+                  for a in abilities)
     empty = (0, 0)
     expanded = 0
     truncated = False
 
     def refill(amount, elapsed):
-        return min(cap, amount + regen * elapsed)
+        return tuple(min(cap, value + rate * elapsed)
+                     for cap, value, rate in zip(caps, amount, rates))
+
+    def grant(amount, values):
+        return tuple(min(cap, value + gain)
+                     for cap, value, gain in zip(caps, amount, values))
 
     has_modifiers = any(a.effect_duration_ms for a in abilities)
 
@@ -264,7 +323,7 @@ def _optimize_timed(abilities, horizon, initial, capacity, regen, lockout, budge
         expanded += 1
         for i, a in enumerate(abilities):
             impact = now + a.impact_delay
-            if now < ready[i] or amount < a.cost * 1000 or impact > horizon:
+            if now < ready[i] or any(v < c for v, c in zip(amount, costs[i])) or impact > horizon:
                 continue
             end = now + a.lockout_ms
             clipped_end = min(end, horizon)
@@ -276,8 +335,8 @@ def _optimize_timed(abilities, horizon, initial, capacity, regen, lockout, budge
             if a.effect_duration_ms:
                 active[i] = impact + a.effect_duration_ms
             active = tuple(active)
-            after_impact = min(cap, refill(amount - a.cost * 1000, a.impact_delay)
-                               + a.resource_gain * 1000)
+            spent = tuple(v - c for v, c in zip(amount, costs[i]))
+            after_impact = grant(refill(spent, a.impact_delay), gains[i])
             if a.periodic_ticks:
                 refreshed = list(current)
                 refreshed[i] = (impact + a.periodic_interval_ms, a.periodic_ticks)
@@ -304,7 +363,8 @@ def _optimize_timed(abilities, horizon, initial, capacity, regen, lockout, budge
             best_damage, best_steps = damage, steps
         return best_damage, best_steps
 
-    damage, steps = search(lockout, refill(initial * 1000, lockout),
+    initial_amounts = (initial * 1000,) + tuple(p.initial * 1000 for p in pools)
+    damage, steps = search(lockout, refill(initial_amounts, lockout),
                            normalize(tuple(a.ready_at_ms for a in abilities), lockout),
                            (empty,) * len(abilities), (0,) * len(abilities))
     return Plan(damage, steps, expanded, not truncated)

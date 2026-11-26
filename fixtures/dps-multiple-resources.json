@@ -1,0 +1,48 @@
+{
+  "schema_version": 5,
+  "model_kind": "synthetic-simulation",
+  "name": "Independent resource pools",
+  "assumptions": "Hypothetical two extra resource pools with independent caps and regeneration; all decisions are on the 100-ms grid.",
+  "horizon_ms": 2000,
+  "resource": 4,
+  "resource_max": 4,
+  "extra_resources": [
+    {
+      "id": "charge",
+      "initial": 0,
+      "capacity": 3,
+      "regen_per_second": 0
+    },
+    {
+      "id": "focus",
+      "initial": 0,
+      "capacity": 2,
+      "regen_per_second": 2
+    }
+  ],
+  "abilities": [
+    {
+      "id": "generate",
+      "damage": 0,
+      "cost": 1,
+      "cooldown_ms": 0,
+      "lockout_ms": 500,
+      "impact_delay_ms": 0,
+      "extra_gains": {
+        "charge": 3
+      }
+    },
+    {
+      "id": "spend",
+      "damage": 100,
+      "cost": 1,
+      "cooldown_ms": 0,
+      "lockout_ms": 500,
+      "impact_delay_ms": 0,
+      "extra_costs": {
+        "charge": 3,
+        "focus": 1
+      }
+    }
+  ]
+}
