@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "model_kind": "synthetic-combat-events",
+  "clock_domain": "synthetic-ms",
+  "start_ms": 0,
+  "end_ms": 5000,
+  "coverage": "partial",
+  "events": [
+    {
+      "id": "e1",
+      "time_ms": 1000,
+      "kind": "damage",
+      "ability_id": "strike",
+      "caster_id": "player",
+      "target_id": "target",
+      "amount": 120,
+      "clock_domain": "synthetic-ms"
+    },
+    {
+      "id": "e2",
+      "time_ms": 1500,
+      "kind": "dodge",
+      "ability_id": "strike",
+      "caster_id": "player",
+      "target_id": "target",
+      "amount": 0,
+      "clock_domain": "synthetic-ms"
+    },
+    {
+      "id": "e3",
+      "time_ms": 2000,
+      "kind": "damage",
+      "ability_id": "periodic",
+      "caster_id": "player",
+      "target_id": "target",
+      "amount": 30,
+      "clock_domain": "synthetic-ms"
+    },
+    {
+      "id": "e4",
+      "time_ms": 2000,
+      "kind": "damage",
+      "ability_id": "other",
+      "caster_id": "ally",
+      "target_id": "target",
+      "amount": 50,
+      "clock_domain": "synthetic-ms"
+    },
+    {
+      "id": "e5",
+      "time_ms": 3000,
+      "kind": "heal",
+      "ability_id": "heal",
+      "caster_id": "player",
+      "target_id": "player",
+      "amount": 80,
+      "clock_domain": "synthetic-ms"
+    }
+  ]
+}
