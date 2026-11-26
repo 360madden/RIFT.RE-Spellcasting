@@ -28,7 +28,7 @@ existing exact-build native verifiers. Do not replace that gate.
   exact-build tests. Keep build-specific research separate.
 - Details and the 30-step checkpoint: [PATCH-RECOVERY-CYCLE-30](docs/PATCH-RECOVERY-CYCLE-30.md).
 
-## Latest research checkpoint — SP-007L
+## Latest research checkpoint — SP-007M
 
 - [SP-007C](docs/SP-007C-historical-verifier-hardening.md) consolidates the exact-build PE parser without relaxing the historical digest.
 - [SP-007D](docs/SP-007D-cast-trial-clock-validation.md), [SP-007E](docs/SP-007E-target-aware-cast-evidence.md), and [SP-007F](docs/SP-007F-session-pin-clock-coverage.md) strengthen offline trial, target, and session/clock coverage checks.
@@ -38,6 +38,7 @@ existing exact-build native verifiers. Do not replace that gate.
 - [SP-007J](docs/SP-007J-evidence-verification-portability.md) consolidates pinned Git JSON reads and removes the Windows privilege-dependent containment-test skip. The 34 historical PE tests remain blocked by unavailable source bytes.
 - [SP-007K](docs/SP-007K-verification-runner.md) provides a single offline verification runner with explicit evidence scope, complete-count reporting, and verified portable/local-evidence modes. The preceding cloud run passed on both operating systems.
 - [SP-007L](docs/SP-007L-verification-scope-audit.md) reconciles Node TAP plans, test rows and reviewed skip counts with explicitly selected evidence inputs; unexpected skips now fail the gate.
+- [SP-007M](docs/SP-007M-typed-cast-observations.md) distinguishes avoidance and cooldown observations from positive effects, preserving exact identity and target uncertainty; historical attribution integration verifies the distinction.
 - Next: obtain new, source-qualified casting observation evidence under the existing approval gate, or recover the original research PE. Do not repeat the same artifact search or interpret buffered source frames as calibrated UTC samples.
 
 ## Milestones

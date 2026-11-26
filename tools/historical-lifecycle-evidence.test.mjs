@@ -97,17 +97,24 @@ test('historical attribution separates avoidance and exact-ID damage from other 
     assert.equal(result.exactDamage,t.classification.selectedTargetDamage);
     assert.equal(result.exactDodges,t.classification.selectedTargetDodges);
     assert.equal(result.otherAbilityDamage,t.classification.differentAbilityDamageToSelected);
-    // Only positive reported damage is represented as an effect here;
-    // dodge/miss and cooldown remain distinct source-reported observations.
-    const observations=t.events.filter(e=>e.kind==='damage'&&e.damage>0).map(e=>({
-      id:'summary-'+t.trial+'-'+e.index,kind:'effect',time:e.clock,
+    // Preserve typed avoidance rather than filtering it out of the
+    // observation model. Do not manufacture a per-event caster for the
+    // separate cooldown records; their trial-level context is checked above.
+    const avoidances=new Set(['dodge','miss','resist','immune']);
+    const observations=t.events.filter(e=>(e.kind==='damage'&&e.damage>0)||avoidances.has(e.kind)).map(e=>({
+      id:'summary-'+t.trial+'-'+e.index,kind:e.kind==='damage'?'effect':'avoidance',time:e.clock,
       clockDomain:'rift-game-frame-reported',sourceId:'RRE-SC502-report',
       casterId:e.caster,abilityId:e.abilityNew,targetId:e.target,
+      ...(avoidances.has(e.kind)?{outcome:e.kind}:{})
     }));
     const verdict=classifyCastEvidence(observations,{
       casterId:t.playerId,abilityId:t.selectedAbilityId,targetId:t.selectedTargetId
     });
     assert.equal(verdict.observed.effect,result.exactDamage>0);
+    assert.equal(verdict.observed.avoidance,result.exactDodges>0);
+    assert.equal(verdict.observed.cooldownBegin,false);
+    assert.equal(verdict.observed.cooldownEnd,false);
+    assert.equal(verdict.provenance.filter(e=>e.kind==='avoidance'&&e.outcome==='dodge').length,result.exactDodges);
     assert.equal(verdict.observed.attempt,false);
     assert.equal(verdict.observed.castbarStart,false);
     assert.equal(verdict.serverAccepted,'unknown');

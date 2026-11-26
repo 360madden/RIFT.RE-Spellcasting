@@ -3,7 +3,8 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const kinds = new Set(['input_attempt', 'castbar_start', 'castbar_end', 'effect', 'interrupt', 'queue_setting']);
+const kinds = new Set(['input_attempt', 'castbar_start', 'castbar_end', 'effect', 'avoidance', 'cooldown_begin', 'cooldown_end', 'interrupt', 'queue_setting']);
+const avoidanceKinds = new Set(['dodge', 'miss', 'resist', 'immune']);
 const named = value => typeof value === 'string' && value.trim().length > 0;
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 export function classifyCastEvidence(events, identity) {
@@ -21,7 +22,7 @@ export function classifyCastEvidence(events, identity) {
   const queueModes = [];
   // Count excluded evidence instead of silently collapsing missing identity,
   // foreign identity and target mismatches into a single absent observation.
-  const excluded = { missingCastIdentity: 0, otherCastIdentity: 0, otherTarget: 0, missingEffectTarget: 0 };
+  const excluded = { missingCastIdentity: 0, otherCastIdentity: 0, otherTarget: 0, missingEffectTarget: 0, missingAvoidanceTarget: 0 };
   for (const event of events) {
     if (!record(event) || !kinds.has(event.kind) || !named(event.id) ||
         !Number.isFinite(event.time) || event.time < 0 ||
@@ -41,6 +42,10 @@ export function classifyCastEvidence(events, identity) {
         clockDomain: event.clockDomain, time: event.time });
       continue;
     }
+    // A typed avoidance is an observed combat result, not a positive
+    // damage/heal effect or proof of request rejection.
+    if (event.kind === 'avoidance' && !avoidanceKinds.has(event.outcome))
+      throw new TypeError('invalid avoidance outcome');
     // A supplied malformed ID is not equivalent to an omitted ID. Preserve
     // absent caster/ability as unattributed evidence, never as a match.
     for (const field of ['casterId', 'abilityId', 'targetId']) {
@@ -65,14 +70,19 @@ export function classifyCastEvidence(events, identity) {
       excluded.missingEffectTarget++;
       continue;
     }
-    // Castbar/input observations often lack target telemetry. They can
+    if (targetRequested && event.kind === 'avoidance' && !targetReported) {
+      excluded.missingAvoidanceTarget++;
+      continue;
+    }
+    // Castbar/input/cooldown observations often lack target telemetry. They can
     // describe the matching caster/ability, but not an exact target.
     const targetBinding = !targetRequested ? 'target-not-requested'
       : targetReported ? 'exact-target' : 'target-unspecified';
     observed.add(event.kind);
     provenance.push({ kind: event.kind, eventId: event.id, sourceId: event.sourceId,
       clockDomain: event.clockDomain, time: event.time, casterId: event.casterId,
-      abilityId: event.abilityId, targetId: event.targetId ?? null, targetBinding });
+      abilityId: event.abilityId, targetId: event.targetId ?? null, targetBinding,
+      ...(event.kind === 'avoidance' ? { outcome: event.outcome } : {}) });
   }
   return {
     identity: validIdentity ? { ...identity } : null,
@@ -81,6 +91,9 @@ export function classifyCastEvidence(events, identity) {
       castbarStart: observed.has('castbar_start'),
       castbarEnd: observed.has('castbar_end'),
       effect: observed.has('effect'),
+      avoidance: observed.has('avoidance'),
+      cooldownBegin: observed.has('cooldown_begin'),
+      cooldownEnd: observed.has('cooldown_end'),
       interrupt: observed.has('interrupt')
     },
     serverAccepted: 'unknown',
@@ -89,7 +102,7 @@ export function classifyCastEvidence(events, identity) {
     queueSettingsObserved: queueModes,
     provenance,
     excludedEventCounts: excluded,
-    limitations: 'Observed events are not proof of causality, native/server acknowledgement or queue behavior. Target-unspecified observations do not establish exact target identity.'
+    limitations: 'Observed events are not proof of causality, native/server acknowledgement or queue behavior. Target-unspecified observations do not establish exact target identity. Cooldown observations do not establish a shared GCD.'
   };
 }
 

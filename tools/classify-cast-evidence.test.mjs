@@ -58,7 +58,7 @@ test('wrong-target attempts, castbar events and interrupts are not matching evid
     e('castbar_end','z',3,{targetId:'other'}),
     e('interrupt','x',4,{targetId:'other'})
   ],who);
-  assert.deepEqual(r.observed,{attempt:false,castbarStart:false,castbarEnd:false,effect:false,interrupt:false});
+  assert.deepEqual(r.observed,{attempt:false,castbarStart:false,castbarEnd:false,effect:false,avoidance:false,cooldownBegin:false,cooldownEnd:false,interrupt:false});
   assert.equal(r.excludedEventCounts.otherTarget,4);
   assert.equal(r.provenance.length,0);
 });
@@ -78,7 +78,7 @@ test('missing and foreign identities and missing effect targets are counted sepa
     e('effect','a',3,{targetId:'other'}),
     e('effect','b',4)
   ],who);
-  assert.deepEqual(r.excludedEventCounts,{missingCastIdentity:1,otherCastIdentity:1,otherTarget:1,missingEffectTarget:1});
+  assert.deepEqual(r.excludedEventCounts,{missingCastIdentity:1,otherCastIdentity:1,otherTarget:1,missingEffectTarget:1,missingAvoidanceTarget:0});
   assert.equal(r.provenance.length,0);
 });
 test('omitting target from the requested identity does not claim target qualification', () => {
@@ -100,4 +100,45 @@ test('blank event metadata rejected, queue observation preserves own clock and t
   assert.equal(r.queueSettingsObserved[0].clockDomain,'file-receipt');
   assert.equal(r.queueSettingsObserved[0].time,3);
   assert.equal(r.requestQueued,'unknown');
+});
+
+test('typed avoidance remains distinct from a positive effect and input failure', () => {
+  const r=classifyCastEvidence([e('avoidance','a',10,{targetId:who.targetId,outcome:'dodge'})],who);
+  assert.equal(r.observed.avoidance,true);
+  assert.equal(r.observed.effect,false);
+  assert.equal(r.observed.attempt,false);
+  assert.equal(r.provenance[0].outcome,'dodge');
+  assert.equal(r.serverAccepted,'unknown');
+});
+test('avoidance requires a recognized outcome and exact requested target', () => {
+  const r=classifyCastEvidence([
+    e('avoidance','a',1,{outcome:'miss'}),
+    e('avoidance','b',2,{outcome:'resist',targetId:'different'}),
+    e('avoidance','c',3,{outcome:'immune',targetId:who.targetId})
+  ],who);
+  assert.equal(r.excludedEventCounts.missingAvoidanceTarget,1);
+  assert.equal(r.excludedEventCounts.otherTarget,1);
+  assert.deepEqual(r.provenance.map(x=>x.outcome),['immune']);
+  for(const outcome of [undefined,null,'failure','Dodge'])
+    assert.throws(()=>classifyCastEvidence([e('avoidance','a',1,{targetId:who.targetId,outcome})],who),/invalid avoidance outcome/);
+});
+test('cooldown begin and end do not establish GCD or a cast', () => {
+  const r=classifyCastEvidence([e('cooldown_begin','b',1),e('cooldown_end','z',3)],who);
+  assert.equal(r.observed.cooldownBegin,true);
+  assert.equal(r.observed.cooldownEnd,true);
+  assert.equal(r.observed.attempt,false);
+  assert.equal(r.observed.effect,false);
+  assert.equal(r.gcdActive,'unknown');
+  assert.equal(r.requestQueued,'unknown');
+  assert.deepEqual(r.provenance.map(x=>x.targetBinding),['target-unspecified','target-unspecified']);
+});
+test('cooldown observations without caster or matching ability do not qualify', () => {
+  const r=classifyCastEvidence([
+    e('cooldown_begin','b',1,{casterId:undefined}),
+    e('cooldown_end','z',2,{abilityId:'other'})
+  ],who);
+  assert.equal(r.observed.cooldownBegin,false);
+  assert.equal(r.observed.cooldownEnd,false);
+  assert.equal(r.excludedEventCounts.missingCastIdentity,1);
+  assert.equal(r.excludedEventCounts.otherCastIdentity,1);
 });
