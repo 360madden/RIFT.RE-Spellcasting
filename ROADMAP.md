@@ -1,4 +1,4 @@
-# RIFT.RE-Spellcasting — evidence-first development roadmap
+# RIFT.RE-Spellcasting — local DPS engine development roadmap
 
 **Updated:** 2026-11-27 (Asia/Manila)
 
@@ -9,11 +9,29 @@
 
 ## Mission and boundary
 
-Produce a reproducible, source-qualified explanation of RIFT spell discovery, eligibility, client requests, queueing, cooldowns, cast/channel timing, interruption and effects. This project owns its *own* synthesis, offline experiments and reproducibility tooling; existing RRE/REA/RR2 findings remain in their original repositories. Do not fork RRECollector, reimplement its saved-variable parser, or treat API-known spells as all learnable spells.
+**Product objective (owner clarification, 2026-11-27):** Develop a sophisticated, autonomous local DPS decision engine for RIFT spellcasting. All decisions, encounter modeling, optimization and feedback evaluation must execute on the local PC, without a required cloud or LLM service. Reverse-engineering and evidence qualification support that product; they are not the end product.
+
+This project owns the DPS model, ability evaluation, resource and cooldown scheduling, decision policy, simulation, performance evaluation and integration contracts. RRE and RR2 remain the sources of record for existing evidence, catalog and observation capabilities. Reuse their reviewed interfaces rather than fork their readers or reimplement their collectors. Distinguish learned, eligible, ready and actually observed outcomes.
 
 Work **offline first**, in bounded, timeout-resistant slices. Read-only live observations require fresh host/build/session evidence. Do not interact with VMware labs. No live casting, movement, reload, addon deployment or native process control is necessary for current milestones.
 
-## Current patch-recovery priority (November 26)
+## Active product milestones
+
+| Priority | Milestone | Deliverable | State |
+| --- | --- | --- | --- |
+| P0 | DPS-001 | Local deterministic finite-horizon planner, synthetic model and regression tests | First implementation complete |
+| P0 | DPS-002 | Versioned encounter and ability profiles, explicit data provenance and modeled assumptions | Next |
+| P0 | DPS-003 | Replay and simulation benchmarks versus simple priority baselines, runtime budget and quality metrics | Planned |
+| P1 | DPS-004 | Extend the model for multiple resources, buff/debuff duration, damage-over-time, procs, channels and encounter transitions | Planned |
+| P1 | DPS-005 | Evaluate sustained damage, burst windows, resource waste, robustness and specialization-specific strategies | Planned |
+| P1 | DPS-006 | Define and validate observation/decision interface using existing RR2 contracts and recorded evidence | Planned |
+| P1 | DPS-007 | Validate current-build integration and result feedback separately; retain explicit authorization and qualification gates for live action | Not qualified |
+
+**Development rule:** Prioritize measurable DPS-engine improvements and useful simulated benchmarks. Historical executable recovery and native mechanism research are dependency work only when they resolve a specific product requirement. An unavailable historical PE must not prevent development of the independent local planner.
+
+See [local DPS engine direction](docs/DPS-001-local-engine-direction.md).
+
+## Supporting patch-recovery checkpoint (November 26)
 
 The original research PE is not available locally. LEGION's independently
 preserved current build is SHA-256 df954b798331e18359be62a31cc74b49fc3f50b87385ebb080a5448256322c01.
@@ -39,7 +57,7 @@ existing exact-build native verifiers. Do not replace that gate.
 - [SP-007K](docs/SP-007K-verification-runner.md) provides a single offline verification runner with explicit evidence scope, complete-count reporting, and verified portable/local-evidence modes. The preceding cloud run passed on both operating systems.
 - [SP-007L](docs/SP-007L-verification-scope-audit.md) reconciles Node TAP plans, test rows and reviewed skip counts with explicitly selected evidence inputs; unexpected skips now fail the gate.
 - [SP-007M](docs/SP-007M-typed-cast-observations.md) distinguishes avoidance and cooldown observations from positive effects, preserving exact identity and target uncertainty; historical attribution integration verifies the distinction.
-- Next: obtain new, source-qualified casting observation evidence under the existing approval gate, or recover the original research PE. Do not repeat the same artifact search or interpret buffered source frames as calibrated UTC samples.
+- Historical research is retained as a supporting workstream. Follow the active product milestones above before adding more evidence infrastructure.
 
 ## Milestones
 
