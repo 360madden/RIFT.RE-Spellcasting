@@ -36,3 +36,11 @@ modification, or duplicate sibling-repository collectors.
   credential changes. Do not merge unrelated work or modify sibling repos.
 
 See `docs/CLOUD-DEVELOPMENT.md` for environment setup and handoff.
+
+## Required integration gate
+
+Main is protected. Publish task branches and open pull requests; both portable
+Windows and Ubuntu Actions checks must pass on the current base before merge.
+Do not bypass protection, use force pushes, or merge a stale task result.
+Resolve review conversations and verify the exact PR head and check conclusions.
+The coordinator owns merged task records and reruns the integrated checks.
