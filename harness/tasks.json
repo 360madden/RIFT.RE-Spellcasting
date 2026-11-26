@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "description": "Offline simulation development queue. Pending tasks are not running jobs. The coordinator owns merge order and queue updates.",
+  "tasks": [
+    {
+      "id": "CLD-01",
+      "title": "Multiple resource pools in synthetic encounters",
+      "priority": 10,
+      "depends": [],
+      "writes": [
+        "tools/dps_planner.py",
+        "tools/dps_profile.py",
+        "tools/dps_lab.py",
+        "tools/test_dps_resources.py",
+        "fixtures/dps-multiple-resources.json"
+      ],
+      "acceptance": "Preserve V1–V4 behavior; add explicit independent resource pools, exact accounting, independent replay, and exhaustive small-case comparisons. No live adapters."
+    },
+    {
+      "id": "CLD-02",
+      "title": "Repeatable offline benchmark suite",
+      "priority": 20,
+      "depends": [],
+      "writes": [
+        "tools/dps_benchmark.py",
+        "tools/test_dps_benchmark.py"
+      ],
+      "acceptance": "Use existing load_profile/evaluate contracts to benchmark tracked synthetic profiles, recording damage, search completeness and repeated timing distributions separately. No core changes or machine-specific timing assertions."
+    },
+    {
+      "id": "CLD-03",
+      "title": "Independent solver correctness and budget audit",
+      "priority": 30,
+      "depends": [],
+      "writes": [
+        "tools/test_dps_search_audit.py",
+        "docs/DPS-search-audit.md"
+      ],
+      "acceptance": "Add deterministic small synthetic cases for waiting, horizon boundaries and bounded-search truncation. Report discrepancies with minimal reproductions; leave core fixes to coordinator."
+    },
+    {
+      "id": "CLD-04",
+      "title": "Offline combat-result statistics",
+      "priority": 40,
+      "depends": [],
+      "writes": [
+        "tools/dps_statistics.py",
+        "tools/test_dps_statistics.py",
+        "fixtures/dps-statistics-synthetic.json"
+      ],
+      "acceptance": "Summarize supplied saved or synthetic records by damage, effect kinds, elapsed observation span and coverage limitations. Reject mixed clocks and invalid values. No live collection or game actions."
+    },
+    {
+      "id": "CLD-05",
+      "title": "Channel and periodic effect semantics",
+      "priority": 50,
+      "depends": [
+        "CLD-01"
+      ],
+      "writes": [
+        "tools/dps_planner.py",
+        "tools/dps_profile.py",
+        "tools/dps_lab.py",
+        "tools/test_dps_channels.py",
+        "fixtures/dps-channel.json"
+      ],
+      "acceptance": "Model synthetic channel ticks and interruption outcomes with documented ordering. Preserve old profiles; independently replay and check small exhaustive cases."
+    },
+    {
+      "id": "CLD-06",
+      "title": "Critical damage and probability analysis",
+      "priority": 60,
+      "depends": [
+        "CLD-05"
+      ],
+      "writes": [
+        "tools/dps_planner.py",
+        "tools/dps_profile.py",
+        "tools/dps_lab.py",
+        "tools/test_dps_probability.py",
+        "fixtures/dps-probability.json"
+      ],
+      "acceptance": "Separate hypothetical expected damage from realized damage. Document probability and rounding assumptions; test seeded distributions. Never label expected value as observed game damage."
+    },
+    {
+      "id": "CLD-07",
+      "title": "Stronger synthetic comparison policies",
+      "priority": 70,
+      "depends": [
+        "CLD-06"
+      ],
+      "writes": [
+        "tools/dps_lab.py",
+        "tools/test_dps_baselines.py"
+      ],
+      "acceptance": "Add effect-aware and resource-aware comparison policies. Keep original baselines and independently replay candidates."
+    },
+    {
+      "id": "CLD-08",
+      "title": "Search performance study",
+      "priority": 80,
+      "depends": [
+        "CLD-02",
+        "CLD-03",
+        "CLD-07"
+      ],
+      "writes": [
+        "tools/dps_planner.py",
+        "tools/test_dps_performance.py",
+        "docs/DPS-search-performance.md"
+      ],
+      "acceptance": "Measure before/after cost using benchmark and correctness suites. Preserve feasibility and truncation reporting; report distributions, not guaranteed latency."
+    },
+    {
+      "id": "CLD-09",
+      "title": "Specialization-style synthetic scenarios",
+      "priority": 90,
+      "depends": [
+        "CLD-06"
+      ],
+      "writes": [
+        "fixtures/dps-specialization-burst.json",
+        "fixtures/dps-specialization-sustain.json",
+        "fixtures/dps-specialization-periodic.json",
+        "tools/test_dps_specialization.py"
+      ],
+      "acceptance": "Document hypothetical burst, sustain and periodic archetypes, and compare modeled outcomes under common assumptions. No actual RIFT rotation or ability-stat claims."
+    },
+    {
+      "id": "CLD-10",
+      "title": "Integrated simulation benchmark and handoff",
+      "priority": 100,
+      "depends": [
+        "CLD-04",
+        "CLD-08",
+        "CLD-09"
+      ],
+      "writes": [
+        "docs/DPS-integrated-benchmark.md",
+        "tools/test_dps_integrated.py"
+      ],
+      "acceptance": "Run the portable suite and reviewed synthetic benchmarks on the integrated revision. Record scope, commands, skip counts, limitations and next unresolved product work."
+    }
+  ]
+}

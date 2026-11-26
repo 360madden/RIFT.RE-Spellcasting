@@ -15,6 +15,15 @@ This project owns the DPS model, ability evaluation, resource and cooldown sched
 
 Work **offline first**, in bounded, timeout-resistant slices. Read-only live observations require fresh host/build/session evidence. Do not interact with VMware labs. No live casting, movement, reload, addon deployment or native process control is necessary for current milestones.
 
+## Cloud development workflow
+
+Use [the cloud development guide](docs/CLOUD-DEVELOPMENT.md) and the
+machine-readable `harness/tasks.json` as the task handoff for parallel
+offline development. Begin with three independent lanes: model development,
+benchmark tooling, and a correctness audit. The coordinator owns integration,
+queue completion records and cross-lane conflicts. Ordinary simulation work
+must not depend on LEGION or a live game installation.
+
 ## Active product milestones
 
 | Priority | Milestone | Deliverable | State |

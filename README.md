@@ -4,6 +4,12 @@ Reverse-engineering research focused on the spellcasting systems of the **RIFT**
 
 ## Project status
 
+**Cloud development:** the repository includes a Codex-ready `AGENTS.md`,
+dependency-ordered task queue and a portable task-packet generator. Run
+`python -B tools/cloud_batch.py --limit 3` from a clean committed checkout
+to prepare independent development tasks. See [cloud development workflow](docs/CLOUD-DEVELOPMENT.md).
+The generator prepares prompts; it does not launch agents or require an API key.
+
 The current product direction is a **local DPS planning and evaluation engine**.
 The initial implementation is an offline synthetic encounter simulator, not
 a live game controller. Existing RRE/RR2 evidence and observation systems
