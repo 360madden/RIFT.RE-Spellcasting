@@ -16,6 +16,29 @@ Offline spellcasting evidence research and patch-recovery tooling. The latest LE
 
 ## Offline reproducibility checks
 
+Use Python 3.10+ and Node 24 with Git available. The consolidated runner
+defaults to portable checks, clears inherited evidence-selection variables
+in its child processes, and reports executed versus skipped tests in JSON.
+
+```powershell
+python -B tools/verify_suite.py
+```
+
+For the exact recorded November 26 RR2 checkpoint on LEGION:
+
+```powershell
+python -B tools/verify_suite.py --evidence-root 'C:\work' --rr2-baseline-root 'C:\work\riftreader2\artifacts\patch-recovery\patch-20261126-01'
+```
+
+Add `--historical-exe PATH` only when the exact original research PE is
+available. Exit 0 means the selected offline checks passed, exit 1 means
+a check failed, and exit 2 means an explicit evidence input was invalid or
+missing. The report's `test_counts_complete` flag distinguishes complete
+test summaries from partial totals when a runner fails. No success result
+qualifies runtime spellcasting or latency. See [SP-007K](docs/SP-007K-verification-runner.md).
+
+The original individual commands remain available:
+
 On the verified development host (LEGION or AMD-DESKTOP), open PowerShell in `C:\work\RIFT.RE-Spellcasting` and run:
 
 ```powershell
