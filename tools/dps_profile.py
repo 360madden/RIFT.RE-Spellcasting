@@ -22,6 +22,7 @@ OPTIONAL = {'regen_per_second', 'initial_lockout_ms', 'state_budget'}
 ABILITY_FIELDS = {'id', 'damage', 'cost', 'cooldown_ms', 'lockout_ms'}
 V2_FIELDS = {'impact_delay_ms', 'resource_gain', 'cooldown_anchor'}
 V3_FIELDS = {'periodic_damage', 'periodic_interval_ms', 'periodic_ticks'}
+V4_FIELDS = {'effect_duration_ms', 'self_bonus_bps', 'target_bonus_bps'}
 
 
 @dataclass(frozen=True)
@@ -59,7 +60,7 @@ def object_fields(value, required, optional, label):
 
 def parse_profile(value):
     object_fields(value, REQUIRED, OPTIONAL, 'profile')
-    if type(value['schema_version']) is not int or value['schema_version'] not in (1, 2, 3):
+    if type(value['schema_version']) is not int or value['schema_version'] not in (1, 2, 3, 4):
         raise ValueError('unsupported profile schema')
     if value['model_kind'] != 'synthetic-simulation':
         raise ValueError('only synthetic simulation profiles are supported')
@@ -75,6 +76,8 @@ def parse_profile(value):
     allowed = {'ready_at_ms'} | (V2_FIELDS if version >= 2 else set())
     if version >= 3:
         allowed |= V3_FIELDS
+    if version >= 4:
+        allowed |= V4_FIELDS
     for row in rows:
         object_fields(row, ABILITY_FIELDS, allowed, 'ability')
         abilities.append(Ability(**row))

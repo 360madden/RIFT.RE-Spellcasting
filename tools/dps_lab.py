@@ -26,6 +26,7 @@ class Metrics:
     direct_damage: int = 0
     periodic_damage: int = 0
     clipped_periodic_ticks: int = 0
+    bonus_damage: int = 0
 
 
 def replay(scenario: Scenario, steps):
@@ -41,18 +42,29 @@ def replay(scenario: Scenario, steps):
     cap = capacity * 1000
     amount = initial * 1000
     wasted = damage = occupied = 0
-    periodic_damage = clipped_ticks = 0
+    periodic_damage = clipped_ticks = bonus_damage = 0
+    active = {}
     # Independent explicit tick lists; no use of the optimizer's compressed
     # next-tick/remaining representation or transition routine.
     pending = {a.id: [] for a in abilities}
-    grid = PERIODIC_GRID_MS if any(a.periodic_ticks for a in abilities) else 1
+    grid = PERIODIC_GRID_MS if any(a.periodic_ticks or a.effect_duration_ms for a in abilities) else 1
     now = 0
+
+    def amplify(base, when):
+        nonlocal bonus_damage
+        buffs = [by_id[key] for key, expires in active.items() if when < expires]
+        # Fraction arithmetic is independent of the search's integer formula.
+        player = 1 + sum((Fraction(a.self_bonus_bps, 10000) for a in buffs), Fraction(0))
+        target = 1 + sum((Fraction(a.target_bonus_bps, 10000) for a in buffs), Fraction(0))
+        total = int(base * player * target)
+        bonus_damage += total - base
+        return total
 
     def advance(end):
         nonlocal now, amount, wasted, periodic_damage
         for ability_id, times in pending.items():
             due = [t for t in times if t <= end]
-            periodic_damage += len(due) * by_id[ability_id].periodic_damage
+            periodic_damage += sum(amplify(by_id[ability_id].periodic_damage, t) for t in due)
             pending[ability_id] = [t for t in times if t > end]
         produced = amount + regen * (end - now)
         wasted += max(0, produced - cap)
@@ -86,6 +98,9 @@ def replay(scenario: Scenario, steps):
         amount -= a.cost * 1000
         ready[a.id] = (step.start_ms if a.cooldown_anchor == 'start' else impact) + a.cooldown_ms
         advance(impact)
+        damage += amplify(step.damage, impact)
+        if a.effect_duration_ms:
+            active[a.id] = impact + a.effect_duration_ms
         if a.periodic_ticks:
             # A tick exactly at refresh time was processed above. Count only
             # canceled old ticks that could have landed inside the encounter.
@@ -98,10 +113,9 @@ def replay(scenario: Scenario, steps):
         clipped_end = min(step.end_ms, horizon)
         advance(clipped_end)
         occupied += clipped_end - step.start_ms
-        damage += step.damage
     advance(horizon)
     return Metrics(damage + periodic_damage, len(steps), occupied, horizon - occupied,
-                   amount, wasted, damage, periodic_damage, clipped_ticks)
+                   amount, wasted, damage, periodic_damage, clipped_ticks, bonus_damage)
 
 
 def baseline(scenario: Scenario, policy):
@@ -118,7 +132,7 @@ def baseline(scenario: Scenario, policy):
     cap = capacity * 1000
     amount = min(cap, initial * 1000 + regen * now)
     ready = {a.id: a.ready_at_ms for a in abilities}
-    grid = PERIODIC_GRID_MS if any(a.periodic_ticks for a in abilities) else 1
+    grid = PERIODIC_GRID_MS if any(a.periodic_ticks or a.effect_duration_ms for a in abilities) else 1
     steps = []
     while now < horizon:
         choices = []
@@ -201,8 +215,9 @@ def evaluate(scenario: Scenario):
         'best_evaluated_policy': selected,
         'best_evaluated_damage': rows[selected]['damage'],
         'optimal_within_model': rows['lookahead']['search_complete'],
-        'search_model': '100-ms-periodic-grid' if any(a.periodic_ticks for a in scenario.abilities)
-                        else 'earliest-feasible-direct-impact',
+        'search_model': ('100-ms-effect-grid' if any(a.effect_duration_ms for a in scenario.abilities)
+                         else '100-ms-periodic-grid' if any(a.periodic_ticks for a in scenario.abilities)
+                         else 'earliest-feasible-direct-impact'),
         'lookahead_vs_best_baseline_damage': predicted - best_baseline,
         'lookahead_vs_best_baseline_percent':
             (predicted - best_baseline) * 100 / best_baseline if best_baseline else None,

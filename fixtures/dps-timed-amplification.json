@@ -1,0 +1,39 @@
+{
+  "schema_version": 4,
+  "model_kind": "synthetic-simulation",
+  "name": "Timed damage amplification",
+  "assumptions": "Hypothetical self buff adds 100% and target vulnerability adds 50%. Bonuses add within each group and multiply between groups. Effects start after the applying impact and expire at the declared boundary.",
+  "horizon_ms": 3000,
+  "resource": 1,
+  "resource_max": 1,
+  "abilities": [
+    {
+      "id": "self-buff",
+      "damage": 0,
+      "cost": 0,
+      "cooldown_ms": 10000,
+      "lockout_ms": 500,
+      "impact_delay_ms": 0,
+      "effect_duration_ms": 3000,
+      "self_bonus_bps": 10000
+    },
+    {
+      "id": "target-debuff",
+      "damage": 0,
+      "cost": 0,
+      "cooldown_ms": 10000,
+      "lockout_ms": 500,
+      "impact_delay_ms": 0,
+      "effect_duration_ms": 3000,
+      "target_bonus_bps": 5000
+    },
+    {
+      "id": "strike",
+      "damage": 100,
+      "cost": 0,
+      "cooldown_ms": 0,
+      "lockout_ms": 500,
+      "impact_delay_ms": 0
+    }
+  ]
+}
