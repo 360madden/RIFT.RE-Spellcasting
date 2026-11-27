@@ -14,7 +14,8 @@
         "tools/test_dps_resources.py",
         "fixtures/dps-multiple-resources.json"
       ],
-      "acceptance": "Preserve V1–V4 behavior; add explicit independent resource pools, exact accounting, independent replay, and exhaustive small-case comparisons. No live adapters."
+      "acceptance": "Preserve V1–V4 behavior; add explicit independent resource pools, exact accounting, independent replay, and exhaustive small-case comparisons. No live adapters.",
+      "merged_commit": "fe18de0b9083eb1f0a0d341d46adb6808f70d786"
     },
     {
       "id": "CLD-02",
@@ -52,7 +53,8 @@
         "tools/test_dps_statistics.py",
         "fixtures/dps-statistics-synthetic.json"
       ],
-      "acceptance": "Summarize supplied saved or synthetic records by damage, effect kinds, elapsed observation span and coverage limitations. Reject mixed clocks and invalid values. No live collection or game actions."
+      "acceptance": "Summarize supplied saved or synthetic records by damage, effect kinds, elapsed observation span and coverage limitations. Reject mixed clocks and invalid values. No live collection or game actions.",
+      "merged_commit": "f2d369b06e273c306125a734c46e19c783c83e3a"
     },
     {
       "id": "CLD-05",

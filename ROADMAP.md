@@ -24,14 +24,20 @@ benchmark tooling, and a correctness audit. The coordinator owns integration,
 queue completion records and cross-lane conflicts. Ordinary simulation work
 must not depend on LEGION or a live game installation.
 
+## Integrated development status
+
+CLD-01 and CLD-04 passed mandatory Windows/Ubuntu CI and merged via PRs
+#4 and #3 respectively. Their task ledger entries record the actual merged
+commits. Next model milestone: CLD-05 (synthetic channel semantics).
+
 ## Active product milestones
 
 | Priority | Milestone | Deliverable | State |
 | --- | --- | --- | --- |
 | P0 | DPS-001 | Local deterministic finite-horizon planner, synthetic model and regression tests | First implementation complete |
-| P0 | DPS-002 | Versioned encounter and ability profiles, explicit data provenance and modeled assumptions | V1–V4 synthetic profiles implemented |
+| P0 | DPS-002 | Versioned encounter and ability profiles, explicit data provenance and modeled assumptions | V1–V5 synthetic profiles implemented |
 | P0 | DPS-003 | Replay and simulation benchmarks versus simple priority baselines, runtime budget and quality metrics | Initial lab and oracle complete; extend model and larger scenarios next |
-| P1 | DPS-004 | Extend the model for multiple resources, buff/debuff duration, damage-over-time, procs, channels and encounter transitions | Impact/recovery, resource grants, cooldown anchors, nonstacking periodic effects and timed modifiers implemented; multiple resources next |
+| P1 | DPS-004 | Extend the model for multiple resources, buff/debuff duration, damage-over-time, procs, channels and encounter transitions | Impact/recovery, resource grants, cooldown anchors, nonstacking periodic effects and timed modifiers and up to four independent resource pools implemented; channels next |
 | P1 | DPS-005 | Evaluate sustained damage, burst windows, resource waste, robustness and specialization-specific strategies | Planned |
 | P1 | DPS-006 | Define and validate observation/decision interface using existing RR2 contracts and recorded evidence | Planned |
 | P1 | DPS-007 | Validate current-build integration and result feedback separately; retain explicit authorization and qualification gates for live action | Not qualified |

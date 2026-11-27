@@ -68,6 +68,16 @@ python -B tools/dps_benchmark.py --repeats 5 --warmups 1
 The independent audit and measured baseline are documented in
 [the solver audit](DPS-search-audit.md).
 
+## Wave 2 integrated results
+
+CLD-04 (offline combat statistics) merged through PR #3 at
+`f2d369b06e273c306125a734c46e19c783c83e3a`. CLD-01 (V5 independent
+resource pools) merged through PR #4 at
+`fe18de0b9083eb1f0a0d341d46adb6808f70d786`.
+Both required operating-system checks passed. The coordinator recorded
+these merges and documented the existing fixture-test scope corrections
+in the PRs. No Codex Cloud job was dispatched.
+
 ## Integration and review
 
 1. Each worker reads AGENTS.md and its assigned task, changes only owned
