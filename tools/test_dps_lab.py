@@ -24,7 +24,7 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(p.horizon_ms, 2000)
 
     def test_no_silent_unknown_fields_or_model_kind(self):
-        for change in ({'schema_version': True}, {'schema_version': 6},
+        for change in ({'schema_version': True}, {'schema_version': 7},
                        {'model_kind': 'live'}, {'unknown': 5}, {'name': ''}):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 parse_profile({**self.raw, **change})
