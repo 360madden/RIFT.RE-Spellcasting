@@ -1,6 +1,6 @@
 # RIFT.RE-Spellcasting — local DPS engine development roadmap
 
-**Updated:** 2026-11-27 (Asia/Manila)
+**Updated:** 2026-11-28 (Asia/Manila)
 
 **Active development host:** LEGION (verify hostname each session; older research may originate on AMD-DESKTOP)
 
@@ -28,16 +28,32 @@ must not depend on LEGION or a live game installation.
 
 CLD-01 and CLD-04 passed mandatory Windows/Ubuntu CI and merged via PRs
 #4 and #3 respectively. Their task ledger entries record the actual merged
-commits. Next model milestone: CLD-05 (synthetic channel semantics).
+commits. CLD-05 merged through PR #6 at
+`184fbb24004bb1cd1d0347207cb6008d069ae8d9` with required Windows and Ubuntu
+CI passing (run 46159858757). V6 adds channel ticks distinct from direct
+and persistent periodic damage. Interruption uses an explicit inclusive
+cutoff; no refund or shortened recovery is assumed. Partial channels may
+deliver ticks through the encounter horizon. The initial CI run caught
+two incorrect benchmark expectations; independently replayed schedules
+established the correct totals, 160 and 130, and both checks subsequently
+passed. Eight focused tests include 30 exhaustive small-model comparisons.
+The Ubuntu job ran 199 Python tests successfully.
+
+LEGION access returned a rate-limit error during this checkpoint. GitHub
+connector commits and protected Actions CI enabled repository-only offline
+development without the game or the local PC. Local synchronization and
+live mechanic qualification remain outstanding. No Codex agents were
+dispatched. Next model milestone: CLD-06 (synthetic critical damage and
+probability analysis).
 
 ## Active product milestones
 
 | Priority | Milestone | Deliverable | State |
 | --- | --- | --- | --- |
 | P0 | DPS-001 | Local deterministic finite-horizon planner, synthetic model and regression tests | First implementation complete |
-| P0 | DPS-002 | Versioned encounter and ability profiles, explicit data provenance and modeled assumptions | V1–V5 synthetic profiles implemented |
+| P0 | DPS-002 | Versioned encounter and ability profiles, explicit data provenance and modeled assumptions | V1–V6 synthetic profiles implemented |
 | P0 | DPS-003 | Replay and simulation benchmarks versus simple priority baselines, runtime budget and quality metrics | Initial lab and oracle complete; extend model and larger scenarios next |
-| P1 | DPS-004 | Extend the model for multiple resources, buff/debuff duration, damage-over-time, procs, channels and encounter transitions | Impact/recovery, resource grants, cooldown anchors, nonstacking periodic effects and timed modifiers and up to four independent resource pools implemented; channels next |
+| P1 | DPS-004 | Extend the model for multiple resources, buff/debuff duration, damage-over-time, procs, channels and encounter transitions | Impact/recovery, resource grants, cooldown anchors, nonstacking periodic effects and timed modifiers and up to four independent resource pools and bounded channel ticks implemented; probability analysis next |
 | P1 | DPS-005 | Evaluate sustained damage, burst windows, resource waste, robustness and specialization-specific strategies | Planned |
 | P1 | DPS-006 | Define and validate observation/decision interface using existing RR2 contracts and recorded evidence | Planned |
 | P1 | DPS-007 | Validate current-build integration and result feedback separately; retain explicit authorization and qualification gates for live action | Not qualified |
