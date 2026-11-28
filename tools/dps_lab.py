@@ -29,6 +29,10 @@ class Metrics:
     bonus_damage: int = 0
     extra_final_resource_milli: dict | None = None
     extra_wasted_resource_milli: dict | None = None
+    channel_damage: int = 0
+    channel_ticks_delivered: int = 0
+    channel_ticks_interrupted: int = 0
+    channel_ticks_outside_horizon: int = 0
 
 
 def replay(scenario: Scenario, steps):
@@ -48,11 +52,12 @@ def replay(scenario: Scenario, steps):
     extra_waste = dict.fromkeys(pools, 0)
     wasted = damage = occupied = 0
     periodic_damage = clipped_ticks = bonus_damage = 0
+    channel_damage = delivered = interrupted = outside = 0
     active = {}
     # Independent explicit tick lists; no use of the optimizer's compressed
     # next-tick/remaining representation or transition routine.
     pending = {a.id: [] for a in abilities}
-    grid = PERIODIC_GRID_MS if pools or any(a.periodic_ticks or a.effect_duration_ms for a in abilities) else 1
+    grid = PERIODIC_GRID_MS if pools or any(a.periodic_ticks or a.effect_duration_ms or a.channel_ticks for a in abilities) else 1
     now = 0
 
     def amplify(base, when):
@@ -129,12 +134,26 @@ def replay(scenario: Scenario, steps):
             extra_waste[key] += max(0, generated - limit)
             extra[key] = min(limit, generated)
         clipped_end = min(step.end_ms, horizon)
+        # Independent event enumeration, not the search's tick-count formula.
+        # Ticks at the interruption boundary or horizon are included. A tick
+        # outside the horizon is counted separately even if also interrupted.
+        for index in range(1, a.channel_ticks + 1):
+            offset = index * a.channel_interval_ms
+            stamp = step.start_ms + offset
+            if stamp > horizon:
+                outside += 1
+            elif a.channel_interrupt_after_ms is not None and offset > a.channel_interrupt_after_ms:
+                interrupted += 1
+            else:
+                delivered += 1
+                channel_damage += amplify(a.channel_damage, stamp)
         advance(clipped_end)
         occupied += clipped_end - step.start_ms
     advance(horizon)
-    return Metrics(damage + periodic_damage, len(steps), occupied, horizon - occupied,
+    return Metrics(damage + periodic_damage + channel_damage, len(steps), occupied, horizon - occupied,
                    amount, wasted, damage, periodic_damage, clipped_ticks, bonus_damage,
-                   extra or None, extra_waste or None)
+                   extra or None, extra_waste or None,
+                   channel_damage, delivered, interrupted, outside)
 
 
 def baseline(scenario: Scenario, policy):
@@ -154,12 +173,12 @@ def baseline(scenario: Scenario, policy):
     extra = {key: min(p.capacity * 1000, p.initial * 1000 + p.regen_per_second * now)
              for key, p in pools.items()}
     ready = {a.id: a.ready_at_ms for a in abilities}
-    grid = PERIODIC_GRID_MS if pools or any(a.periodic_ticks or a.effect_duration_ms for a in abilities) else 1
+    grid = PERIODIC_GRID_MS if pools or any(a.periodic_ticks or a.effect_duration_ms or a.channel_ticks for a in abilities) else 1
     steps = []
     while now < horizon:
         choices = []
         for a in abilities:
-            if a.damage <= 0 and not a.periodic_ticks:
+            if a.damage <= 0 and not a.periodic_ticks and not a.channel_ticks:
                 continue
             start = max(now, ready[a.id])
             available = min(cap, amount + regen * (start - now))
@@ -185,7 +204,13 @@ def baseline(scenario: Scenario, policy):
             impact = start + a.impact_delay
             if start < horizon and impact <= horizon:
                 ticks = min(a.periodic_ticks, (horizon - impact) // a.periodic_interval_ms) if a.periodic_ticks else 0
-                nominal = a.damage + ticks * a.periodic_damage
+                channel_ticks = 0
+                if a.channel_ticks:
+                    cutoff = min(horizon - start, a.lockout_ms)
+                    if a.channel_interrupt_after_ms is not None:
+                        cutoff = min(cutoff, a.channel_interrupt_after_ms)
+                    channel_ticks = min(a.channel_ticks, cutoff // a.channel_interval_ms)
+                nominal = a.damage + ticks * a.periodic_damage + channel_ticks * a.channel_damage
                 if nominal == 0:
                     continue
                 score = nominal if policy == 'greedy-damage' else Fraction(nominal, a.lockout_ms)
@@ -259,7 +284,8 @@ def evaluate(scenario: Scenario):
         'best_evaluated_policy': selected,
         'best_evaluated_damage': rows[selected]['damage'],
         'optimal_within_model': rows['lookahead']['search_complete'],
-        'search_model': ('100-ms-multi-resource-grid' if scenario.extra_resources
+        'search_model': ('100-ms-channel-grid' if any(a.channel_ticks for a in scenario.abilities)
+                         else '100-ms-multi-resource-grid' if scenario.extra_resources
                          else '100-ms-effect-grid' if any(a.effect_duration_ms for a in scenario.abilities)
                          else '100-ms-periodic-grid' if any(a.periodic_ticks for a in scenario.abilities)
                          else 'earliest-feasible-direct-impact'),
