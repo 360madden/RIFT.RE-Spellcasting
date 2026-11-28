@@ -43,6 +43,10 @@ class Ability:
     target_bonus_bps: int = 0
     extra_costs: tuple[tuple[str, int], ...] = ()
     extra_gains: tuple[tuple[str, int], ...] = ()
+    channel_damage: int = 0
+    channel_interval_ms: int = 0
+    channel_ticks: int = 0
+    channel_interrupt_after_ms: int | None = None
 
     @property
     def impact_delay(self):
@@ -149,13 +153,27 @@ def validate_model(abilities, *, horizon_ms, resource, resource_max,
         integer(a.target_bonus_bps, 0, 10000, "target_bonus_bps")
         if bool(a.effect_duration_ms) != bool(a.self_bonus_bps or a.target_bonus_bps):
             raise ValueError("timed modifier requires duration and bonus")
-    if pools or any(a.periodic_ticks or a.effect_duration_ms for a in abilities):
+        integer(a.channel_damage, 0, 1000000000, "channel_damage")
+        integer(a.channel_interval_ms, 0, 30000, "channel_interval_ms")
+        integer(a.channel_ticks, 0, 100, "channel_ticks")
+        if any((a.channel_damage, a.channel_interval_ms, a.channel_ticks)):
+            if not all((a.channel_damage, a.channel_interval_ms, a.channel_ticks)):
+                raise ValueError("channel fields must be positive together")
+            duration = a.channel_interval_ms * a.channel_ticks
+            if duration > a.lockout_ms or a.impact_delay != 0:
+                raise ValueError("channel requires a start impact and ticks within recovery")
+            if a.channel_interrupt_after_ms is not None:
+                integer(a.channel_interrupt_after_ms, 0, duration, "channel interruption")
+        elif a.channel_interrupt_after_ms is not None:
+            raise ValueError("channel interruption requires a channel")
+    if pools or any(a.periodic_ticks or a.effect_duration_ms or a.channel_ticks for a in abilities):
         # Explicit wait decisions are required with nonstacking refresh.
         # Restrict this first periodic model to a declared 100-ms grid.
         times = [horizon, lockout]
         for a in abilities:
             times.extend((a.lockout_ms, a.cooldown_ms, a.ready_at_ms,
-                          a.impact_delay, a.periodic_interval_ms, a.effect_duration_ms))
+                          a.impact_delay, a.periodic_interval_ms, a.effect_duration_ms,
+                          a.channel_interval_ms, a.channel_interrupt_after_ms or 0))
         if any(t % PERIODIC_GRID_MS for t in times):
             raise ValueError("timed effect and multi-resource models require 100-ms-aligned timing")
 
@@ -174,7 +192,7 @@ def optimize(abilities, *, horizon_ms, resource, resource_max,
     rather than only damage-per-second of the next action. The caller supplies
     impact delay, recovery, cooldown anchor, and any resource grant. Impacts
     at the horizon count; new actions at the horizon do not. This simplified
-    model supports periodic refresh on a fixed grid, but no procs, movement,
+    model supports periodic refresh and channels on a fixed grid, but no procs, movement,
     or stochastic mechanics.
     """
     abilities, horizon, initial, capacity, regen, lockout, budget = validate_model(
@@ -182,7 +200,7 @@ def optimize(abilities, *, horizon_ms, resource, resource_max,
         regen_per_second=regen_per_second, initial_lockout_ms=initial_lockout_ms,
         state_budget=state_budget, extra_resources=extra_resources)
     pools = validate_resources(extra_resources)
-    if pools or any(a.periodic_ticks or a.effect_duration_ms for a in abilities):
+    if pools or any(a.periodic_ticks or a.effect_duration_ms or a.channel_ticks for a in abilities):
         return _optimize_timed(abilities, horizon, initial, capacity, regen, lockout, budget, pools)
     cap = capacity * 1000
     expanded = 0
@@ -342,12 +360,23 @@ def _optimize_timed(abilities, horizon, initial, capacity, regen, lockout, budge
                 refreshed[i] = (impact + a.periodic_interval_ms, a.periodic_ticks)
                 current = tuple(refreshed)
             tail_damage, current = advance(current, clipped_end, active)
+            # Channel damage is confined to this occupied interval. In the
+            # synthetic model, interruption cancels later ticks but does not
+            # refund costs or shorten recovery. Ticks exactly at cutoff count.
+            channel_damage = 0
+            if a.channel_ticks:
+                cutoff = clipped_end - now
+                if a.channel_interrupt_after_ms is not None:
+                    cutoff = min(cutoff, a.channel_interrupt_after_ms)
+                due = min(a.channel_ticks, cutoff // a.channel_interval_ms)
+                channel_damage = sum(scaled(a.channel_damage, now + k * a.channel_interval_ms, active)
+                                     for k in range(1, due + 1))
             updated = list(ready)
             updated[i] = (now if a.cooldown_anchor == 'start' else impact) + a.cooldown_ms
             after = refill(after_impact, clipped_end - impact)
             future, future_steps = search(clipped_end, after, normalize(updated, clipped_end),
                                           current, expire(active, clipped_end))
-            damage = direct_damage + tick_damage + tail_damage + future
+            damage = direct_damage + tick_damage + tail_damage + channel_damage + future
             steps = (Step(a.id, now, end, a.damage, impact),) + future_steps
             if better(damage, steps, best_damage, best_steps):
                 best_damage, best_steps = damage, steps
