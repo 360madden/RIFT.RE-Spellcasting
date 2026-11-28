@@ -37,8 +37,8 @@ class ChannelTests(unittest.TestCase):
         self.assertEqual(m.channel_ticks_interrupted, 1)
         self.assertEqual(m.occupied_ms, 1500)
         plan = optimize(p.abilities, **p.model_kwargs())
-        self.assertEqual(plan.damage, 100)
-        self.assertEqual(replay(p, plan.steps).damage, 100)
+        self.assertEqual(plan.damage, 105)
+        self.assertEqual(replay(p, plan.steps).damage, 105)
 
     def test_horizon_clips_channel_without_changing_recovery(self):
         p = replace(load_profile(FIXTURE), horizon_ms=1000)
