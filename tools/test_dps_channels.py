@@ -20,11 +20,19 @@ class ChannelTests(unittest.TestCase):
         self.assertEqual(p.profile_version, 6)
         self.assertEqual(result["search_model"], "100-ms-channel-grid")
         self.assertTrue(row["search_complete"])
-        self.assertEqual(row["damage"], 145)
-        self.assertEqual(row["channel_damage"], 120)
-        self.assertEqual(row["direct_damage"], 25)
-        self.assertEqual(row["channel_ticks_delivered"], 3)
+        # Four 40-damage ticks fit in two seconds: one full channel and
+        # the first tick of a second. This beats replacing the final tick
+        # with a 25-damage filler. Recovery may extend past the horizon.
+        reference = replay(p, [Step("channel", 0, 1500, 0, 0),
+                               Step("channel", 1500, 3000, 0, 1500)])
+        self.assertEqual(reference.damage, 160)
+        self.assertEqual(reference.channel_ticks_outside_horizon, 2)
+        self.assertEqual(row["damage"], 160)
+        self.assertEqual(row["channel_damage"], 160)
+        self.assertEqual(row["direct_damage"], 0)
+        self.assertEqual(row["channel_ticks_delivered"], 4)
         self.assertEqual(row["channel_ticks_interrupted"], 0)
+        self.assertEqual(row["channel_ticks_outside_horizon"], 2)
 
     def test_cutoff_tick_counts_and_later_ticks_are_canceled(self):
         p = load_profile(FIXTURE)
@@ -37,8 +45,16 @@ class ChannelTests(unittest.TestCase):
         self.assertEqual(m.channel_ticks_interrupted, 1)
         self.assertEqual(m.occupied_ms, 1500)
         plan = optimize(p.abilities, **p.model_kwargs())
-        self.assertEqual(plan.damage, 105)
-        self.assertEqual(replay(p, plan.steps).damage, 105)
+        # Starting with two fillers and finishing with a channel delivers
+        # both eligible ticks by the horizon, for 25 + 25 + 80 = 130.
+        # Two channels can deliver at most three ticks (120), and a
+        # third filler before a channel leaves time for only one tick (115).
+        reference = replay(p, [Step("filler", 0, 500, 25, 0),
+                               Step("filler", 500, 1000, 25, 500),
+                               Step("channel", 1000, 2500, 0, 1000)])
+        self.assertEqual(reference.damage, 130)
+        self.assertEqual(plan.damage, 130)
+        self.assertEqual(replay(p, plan.steps).damage, 130)
 
     def test_horizon_clips_channel_without_changing_recovery(self):
         p = replace(load_profile(FIXTURE), horizon_ms=1000)
