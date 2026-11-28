@@ -24,6 +24,7 @@ V2_FIELDS = {'impact_delay_ms', 'resource_gain', 'cooldown_anchor'}
 V3_FIELDS = {'periodic_damage', 'periodic_interval_ms', 'periodic_ticks'}
 V4_FIELDS = {'effect_duration_ms', 'self_bonus_bps', 'target_bonus_bps'}
 V5_FIELDS = {'extra_costs', 'extra_gains'}
+V6_FIELDS = {'channel_damage', 'channel_interval_ms', 'channel_ticks', 'channel_interrupt_after_ms'}
 
 
 @dataclass(frozen=True)
@@ -63,8 +64,8 @@ def object_fields(value, required, optional, label):
 
 def parse_profile(value):
     version = value.get('schema_version') if isinstance(value, dict) else None
-    object_fields(value, REQUIRED, OPTIONAL | ({'extra_resources'} if type(version) is int and version == 5 else set()), 'profile')
-    if type(version) is not int or version not in (1, 2, 3, 4, 5):
+    object_fields(value, REQUIRED, OPTIONAL | ({'extra_resources'} if type(version) is int and version in (5, 6) else set()), 'profile')
+    if type(version) is not int or version not in (1, 2, 3, 4, 5, 6):
         raise ValueError('unsupported profile schema')
     if value['model_kind'] != 'synthetic-simulation':
         raise ValueError('only synthetic simulation profiles are supported')
@@ -92,6 +93,8 @@ def parse_profile(value):
         allowed |= V4_FIELDS
     if version >= 5:
         allowed |= V5_FIELDS
+    if version >= 6:
+        allowed |= V6_FIELDS
     for row in rows:
         object_fields(row, ABILITY_FIELDS, allowed, 'ability')
         arguments = dict(row)
