@@ -70,7 +70,8 @@
         "tools/test_dps_channels.py",
         "fixtures/dps-channel.json"
       ],
-      "acceptance": "Model synthetic channel ticks and interruption outcomes with documented ordering. Preserve old profiles; independently replay and check small exhaustive cases."
+      "acceptance": "Model synthetic channel ticks and interruption outcomes with documented ordering. Preserve old profiles; independently replay and check small exhaustive cases.",
+      "merged_commit": "184fbb24004bb1cd1d0347207cb6008d069ae8d9"
     },
     {
       "id": "CLD-06",
